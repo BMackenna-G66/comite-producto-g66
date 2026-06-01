@@ -4,7 +4,6 @@ import { getProducts } from '../services/firestore';
 import { Product, ProductStatus } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import GateStatusBadge from '../components/GateStatusBadge';
-import { useAuth } from '../hooks/useAuth';
 
 const STATUS_COLOR: Record<ProductStatus, string> = {
   draft: 'bg-gray-100 text-gray-600',
@@ -21,7 +20,7 @@ const STATUS_LABEL: Record<ProductStatus, string> = {
 };
 
 export default function ProductsPage() {
-  const { user } = useAuth();
+  
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ProductStatus | 'all'>('all');
@@ -41,7 +40,7 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-bold text-gray-800">Productos</h1>
           <p className="text-gray-500 text-sm mt-1">{products.length} producto{products.length !== 1 ? 's' : ''} registrados</p>
         </div>
-        {(user?.role === 'admin' || user?.role === 'member') && (
+        {true && (
           <Link
             to="/products/new"
             className="bg-brand text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-dark transition-colors"
@@ -72,7 +71,7 @@ export default function ProductsPage() {
           <div className="text-5xl">📋</div>
           <p className="text-gray-600 font-medium">No hay productos</p>
           <p className="text-gray-400 text-sm">Crea el primer producto para comenzar el proceso de aprobación.</p>
-          {(user?.role === 'admin' || user?.role === 'member') && (
+          {true && (
             <Link to="/products/new" className="inline-block mt-2 bg-brand text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-dark">
               Crear Producto
             </Link>

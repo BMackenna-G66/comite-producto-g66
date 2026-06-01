@@ -3,7 +3,6 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getProduct, getRisks, getCommitteeSessions, getRedFlags, updateProduct, createRisk, updateRisk, deleteRisk } from '../services/firestore';
 import { analyzeProductRisks, suggestMitigations } from '../services/geminiService';
 import { Product, Risk, CommitteeSession, RedFlag, PRINCIPLES, RISK_CATEGORIES, RoamState, riskLevelFromScore } from '../types';
-import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
 import GateStatusBadge from '../components/GateStatusBadge';
 import RiskBadge from '../components/RiskBadge';
@@ -12,7 +11,7 @@ type Tab = 'overview' | 'risks' | 'sessions' | 'redflags';
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  
   const navigate = useNavigate();
   const [product, setProduct] = useState<Product | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
@@ -26,7 +25,7 @@ export default function ProductDetailPage() {
   const [riskForm, setRiskForm] = useState({ title: '', description: '', category: '', macroprocess: '', process: '', impact: 3, probability: 3, owner: '', isRedFlag: false });
   const [mitLoading, setMitLoading] = useState<string | null>(null);
 
-  const canEdit = user?.role === 'admin' || user?.role === 'member';
+  const canEdit = true;
 
   const reload = async () => {
     if (!id) return;
@@ -61,7 +60,7 @@ export default function ProductDetailPage() {
           inherentRisk: 0,
           riskLevel: r.riskLevel,
           roamStatus: 'Owned',
-          owner: user?.name ?? '',
+          owner: '',
           mitigationPlan: r.suggestedControl,
           isRedFlag: r.riskLevel === 'muy_alto',
           control: r.suggestedControl,
@@ -303,7 +302,7 @@ export default function ProductDetailPage() {
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Owner</label>
-                  <input value={riskForm.owner} onChange={e => setRiskForm(f => ({...f, owner: e.target.value}))} placeholder={user?.name} className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+                  <input value={riskForm.owner} onChange={e => setRiskForm(f => ({...f, owner: e.target.value}))} placeholder='Responsable' className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Impacto (1-5): {riskForm.impact}</label>

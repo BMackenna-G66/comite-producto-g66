@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createProduct } from '../services/firestore';
-import { useAuth } from '../hooks/useAuth';
 import { COMPANIES } from '../types';
 
 export default function NewProductPage() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
+  const [ownerName, setOwnerName] = useState('');
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -27,13 +26,12 @@ export default function NewProductPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
     setSaving(true);
     try {
       const id = await createProduct({
         ...form,
-        owner: user.uid,
-        ownerName: user.name,
+        owner: crypto.randomUUID(),
+        ownerName: ownerName || 'Sin asignar',
         status: 'gate1',
         currentGate: 1,
         gate1Status: 'in_progress',
@@ -59,47 +57,37 @@ export default function NewProductPage() {
 
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Nombre del Producto / Iniciativa *</label>
-            <input
-              required
-              value={form.name}
-              onChange={e => set('name', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
-              placeholder="Ej: Tarjeta Prepago Digital Global Card"
-            />
+            <input required value={form.name} onChange={e => set('name', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="Ej: Tarjeta Prepago Digital Global Card" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Owner / Responsable</label>
+            <input value={ownerName} onChange={e => setOwnerName(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="Nombre del responsable del producto" />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Descripción del Producto *</label>
-            <textarea
-              required
-              rows={3}
-              value={form.description}
-              onChange={e => set('description', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none"
-              placeholder="Descripción técnica y funcional del producto..."
-            />
+            <textarea required rows={3} value={form.description} onChange={e => set('description', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+              placeholder="Descripción técnica y funcional del producto..." />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Business Case / Justificación *</label>
-            <textarea
-              required
-              rows={4}
-              value={form.businessCase}
-              onChange={e => set('businessCase', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none"
-              placeholder="Justificación comercial, KPIs esperados, mercado objetivo..."
-            />
+            <textarea required rows={4} value={form.businessCase} onChange={e => set('businessCase', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+              placeholder="Justificación comercial, KPIs esperados, mercado objetivo..." />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Público Objetivo</label>
-            <input
-              value={form.publicTarget}
-              onChange={e => set('publicTarget', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
-              placeholder="Ej: Personas naturales mayores de 18 años en Chile"
-            />
+            <input value={form.publicTarget} onChange={e => set('publicTarget', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="Ej: Personas naturales mayores de 18 años en Chile" />
           </div>
         </div>
 
@@ -107,16 +95,10 @@ export default function NewProductPage() {
           <h2 className="font-semibold text-gray-700 text-sm">Empresas Afectadas</h2>
           <div className="flex flex-wrap gap-2">
             {COMPANIES.map(c => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => toggleCompany(c)}
+              <button key={c} type="button" onClick={() => toggleCompany(c)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  form.companies.includes(c)
-                    ? 'bg-brand text-white border-brand'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-brand'
-                }`}
-              >
+                  form.companies.includes(c) ? 'bg-brand text-white border-brand' : 'bg-white text-gray-600 border-gray-200 hover:border-brand'
+                }`}>
                 {c}
               </button>
             ))}
@@ -124,18 +106,8 @@ export default function NewProductPage() {
         </div>
 
         <div className="px-6 py-4 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/products')}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="bg-brand text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-brand-dark disabled:opacity-50 transition-colors"
-          >
+          <button type="button" onClick={() => navigate('/products')} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancelar</button>
+          <button type="submit" disabled={saving} className="bg-brand text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-brand-dark disabled:opacity-50 transition-colors">
             {saving ? 'Creando...' : 'Crear Producto'}
           </button>
         </div>

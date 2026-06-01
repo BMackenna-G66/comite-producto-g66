@@ -3,7 +3,6 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { getProduct, getRisks, getCommitteeSessions, createCommitteeSession, updateCommitteeSession } from '../services/firestore';
 import { generateCommitteeSummary } from '../services/geminiService';
 import { Product, Risk, CommitteeSession, COMMITTEE_ROLES, PRINCIPLES, Attendee, ConflictDeclaration, PrincipleEvaluation, Vote, MemberOpinion, Commitment, RedFlag, CommitteeResolution } from '../types';
-import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const defaultSession = (productId: string, productName: string, gate: 1|2|3, secretaryName: string, secretaryId: string): Omit<CommitteeSession, 'id'|'createdAt'|'updatedAt'> => ({
@@ -38,7 +37,7 @@ export default function CommitteeSessionPage() {
   const { id } = useParams<{ id: string }>();
   const [params] = useSearchParams();
   const productIdParam = params.get('productId');
-  const { user } = useAuth();
+  
   const navigate = useNavigate();
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -53,7 +52,7 @@ export default function CommitteeSessionPage() {
   const [newFlag, setNewFlag] = useState({ description: '', area: '', correctiveAction: '' });
   const [newCommitment, setNewCommitment] = useState({ task: '', responsible: '', dueDate: '' });
 
-  const canEdit = user?.role === 'admin' || user?.role === 'member';
+  const canEdit = true;
 
   useEffect(() => {
     const init = async () => {
@@ -74,7 +73,7 @@ export default function CommitteeSessionPage() {
           setProduct(p);
           const r = await getRisks(p.id);
           setRisks(r);
-          setSession(defaultSession(p.id, p.name, p.currentGate as 1|2|3, user?.name ?? '', user?.uid ?? ''));
+          setSession(defaultSession(p.id, p.name, p.currentGate as 1|2|3, '', ''));
         }
       }
       setLoading(false);

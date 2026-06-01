@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getProducts, getAllSessions, getAllRisks, getCommitments } from '../services/firestore';
 import { Product, CommitteeSession, Risk, Commitment } from '../types';
-import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
 import GateStatusBadge from '../components/GateStatusBadge';
 
@@ -17,7 +16,7 @@ function StatCard({ label, value, sub, color }: { label: string; value: number |
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  
   const [products, setProducts] = useState<Product[]>([]);
   const [sessions, setSessions] = useState<CommitteeSession[]>([]);
   const [risks, setRisks] = useState<Risk[]>([]);
@@ -49,7 +48,7 @@ export default function DashboardPage() {
     <div className="p-6 space-y-6 max-w-6xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
-        <p className="text-gray-500 text-sm mt-1">Bienvenido, {user?.name.split(' ')[0]}. Aquí está el estado del comité.</p>
+        <p className="text-gray-500 text-sm mt-1">Aquí está el estado actual del comité.</p>
       </div>
 
       {/* Stats */}
