@@ -6,8 +6,9 @@ import { Product, Risk, CommitteeSession, RedFlag, PRINCIPLES, RISK_CATEGORIES, 
 import LoadingSpinner from '../components/LoadingSpinner';
 import GateStatusBadge from '../components/GateStatusBadge';
 import RiskBadge from '../components/RiskBadge';
+import RiskOwnershipTable from '../components/RiskOwnershipTable';
 
-type Tab = 'overview' | 'risks' | 'sessions' | 'redflags';
+type Tab = 'overview' | 'risks' | 'ownership' | 'sessions' | 'redflags';
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -205,7 +206,7 @@ export default function ProductDetailPage() {
       {/* Tabs */}
       <div className="border-b border-gray-200">
         <div className="flex gap-0">
-          {(['overview', 'risks', 'sessions', 'redflags'] as Tab[]).map(t => (
+          {(['overview', 'risks', 'ownership', 'sessions', 'redflags'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -213,7 +214,11 @@ export default function ProductDetailPage() {
                 tab === t ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              {t === 'overview' ? 'Descripción' : t === 'risks' ? `Riesgos (${risks.length})` : t === 'sessions' ? `Sesiones (${sessions.length})` : `Red Flags (${redFlags.filter(r => r.status === 'active').length})`}
+              {t === 'overview' ? 'Descripción'
+                : t === 'risks' ? `Riesgos (${risks.length})`
+                : t === 'ownership' ? `Responsables Comité`
+                : t === 'sessions' ? `Sesiones (${sessions.length})`
+                : `Red Flags (${redFlags.filter(r => r.status === 'active').length})`}
             </button>
           ))}
         </div>
@@ -385,6 +390,14 @@ export default function ProductDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {tab === 'ownership' && (
+        <RiskOwnershipTable
+          risks={risks}
+          onRefresh={reload}
+          readOnly={!canEdit}
+        />
       )}
 
       {tab === 'sessions' && (

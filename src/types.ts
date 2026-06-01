@@ -180,12 +180,70 @@ export const RISK_CATEGORIES = [
 export const COMPANIES = ['Global81 SpA', 'GlobalCard S.A.', 'Sedpe', 'Arpagos', 'Todas'];
 
 export const COMMITTEE_ROLES = [
-  { roleLabel: 'Presidente (Regional Compliance Manager)', canVote: true },
-  { roleLabel: 'Secretario (Legal Lead)', canVote: false },
-  { roleLabel: 'Oficial de Cumplimiento Global 81', canVote: true },
-  { roleLabel: 'Oficial de Cumplimiento Sedpe', canVote: true },
-  { roleLabel: 'Gerente de Riesgos', canVote: true },
-  { roleLabel: 'Head of Fraude', canVote: true },
+  {
+    roleLabel: 'General Counsel',
+    shortLabel: 'General Counsel',
+    rolInComite: 'Presidente',
+    canVote: true,
+    riskCategories: ['Riesgo Legal/Normativo', 'Riesgo de Conducta', 'Riesgo Reputacional', 'Riesgo Estratégico'],
+    expertise: 'Gobierno corporativo, marco legal, cumplimiento normativo regional',
+  },
+  {
+    roleLabel: 'Legal Lead',
+    shortLabel: 'Legal Lead',
+    rolInComite: 'Secretario / Integrante Evaluador',
+    canVote: true,
+    riskCategories: ['Riesgo Legal/Normativo', 'Riesgo AML/Compliance', 'Riesgo de Conducta'],
+    expertise: 'AML, SARLAFT, cumplimiento regulatorio, contratos, T&C',
+  },
+  {
+    roleLabel: 'Oficial de Cumplimiento Colombia',
+    shortLabel: 'Compliance Colombia',
+    rolInComite: 'Integrante Evaluador',
+    canVote: true,
+    riskCategories: ['Riesgo AML/Compliance', 'Riesgo Legal/Normativo'],
+    expertise: 'AML / SARLAFT / Cumplimiento SFC / Protección de Datos Colombia',
+  },
+  {
+    roleLabel: 'Oficial de Cumplimiento Argentina',
+    shortLabel: 'Compliance Argentina',
+    rolInComite: 'Integrante Evaluador',
+    canVote: true,
+    riskCategories: ['Riesgo AML/Compliance', 'Riesgo Legal/Normativo'],
+    expertise: 'AML / SARLAFT / Cumplimiento BCRA / Regulación Argentina',
+  },
+  {
+    roleLabel: 'Data Compliance Specialist',
+    shortLabel: 'Data Compliance',
+    rolInComite: 'Integrante Evaluador',
+    canVote: true,
+    riskCategories: ['Riesgo de Datos/Privacidad', 'Riesgo Operacional'],
+    expertise: 'Señales de alerta, monitoreos, calidad de datos, privacidad',
+  },
+  {
+    roleLabel: 'Head Fraude',
+    shortLabel: 'Head Fraude',
+    rolInComite: 'Integrante Evaluador',
+    canVote: true,
+    riskCategories: ['Riesgo de Fraude'],
+    expertise: 'Señales de alerta, monitoreos de fraude, topes transaccionales',
+  },
+  {
+    roleLabel: 'Head Ciberseguridad',
+    shortLabel: 'Head Ciber',
+    rolInComite: 'Integrante Evaluador',
+    canVote: true,
+    riskCategories: ['Riesgo Ciberseguridad', 'Riesgo Continuidad del Negocio'],
+    expertise: 'Infraestructura, activos tecnológicos, monitoreo de seguridad',
+  },
+  {
+    roleLabel: 'Gerente de Riesgos',
+    shortLabel: 'Gte. Riesgos',
+    rolInComite: 'Integrante Evaluador / Secretario',
+    canVote: true,
+    riskCategories: ['Riesgo Operacional', 'Riesgo Continuidad del Negocio', 'Riesgo Contable'],
+    expertise: 'Riesgos transversales, Matriz de Riesgos, SLA, planes de continuidad',
+  },
 ];
 
 export interface AIRiskAnalysis {
@@ -207,6 +265,14 @@ export const riskLevelFromScore = (score: number): RiskLevel => {
   if (score >= 5) return 'moderado';
   if (score >= 3) return 'bajo';
   return 'muy_bajo';
+};
+
+// Auto-assign a committee member based on risk category
+export const assignRiskOwner = (category: string): typeof COMMITTEE_ROLES[0] | null => {
+  const match = COMMITTEE_ROLES.find(r =>
+    r.riskCategories.some(c => category.toLowerCase().includes(c.toLowerCase().split('/')[0].toLowerCase().trim()))
+  );
+  return match ?? COMMITTEE_ROLES.find(r => r.roleLabel === 'Gerente de Riesgos') ?? null;
 };
 
 export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {

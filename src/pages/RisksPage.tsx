@@ -85,6 +85,7 @@ export default function RisksPage() {
               <th className="text-center px-4 py-3">P</th>
               <th className="text-center px-4 py-3">Score</th>
               <th className="text-center px-4 py-3">Nivel</th>
+              <th className="text-left px-4 py-3">Responsable</th>
               <th className="text-center px-4 py-3">ROAM</th>
             </tr>
           </thead>
@@ -118,6 +119,7 @@ export default function RisksPage() {
                 </td>
                 <td className="px-4 py-3 text-center"><RiskBadge level={r.riskLevel} /></td>
                 <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-xs text-gray-600">{r.owner || <span className="text-yellow-500">Sin asignar</span>}</td>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${r.roamStatus === 'Resolved' ? 'bg-green-100 text-green-700' : r.roamStatus === 'Mitigated' ? 'bg-blue-100 text-blue-700' : r.roamStatus === 'Accepted' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
                     {r.roamStatus}
                   </span>
