@@ -8,6 +8,7 @@ import CommitteeSessionPage from './pages/CommitteeSessionPage';
 import SessionsPage from './pages/SessionsPage';
 import RisksPage from './pages/RisksPage';
 import AdminPage from './pages/AdminPage';
+import DocumentAnalysisPage from './pages/DocumentAnalysisPage';
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/sessions" element={<AppLayout><SessionsPage /></AppLayout>} />
         <Route path="/sessions/new" element={<AppLayout><CommitteeSessionPage /></AppLayout>} />
         <Route path="/sessions/:id" element={<AppLayout><CommitteeSessionPage /></AppLayout>} />
+        <Route path="/analyze" element={<AppLayout><DocumentAnalysisPage /></AppLayout>} />
         <Route path="/risks" element={<AppLayout><RisksPage /></AppLayout>} />
         <Route path="/admin" element={<AppLayout><AdminPage /></AppLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
