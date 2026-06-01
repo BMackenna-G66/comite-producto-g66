@@ -84,7 +84,7 @@ Analiza el documento proporcionado para el Comité de Producto de Global81 SpA. 
 export const analyzeDocument = async (text: string): Promise<DocumentAnalysisResult> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-05-20',
+    model: 'gemini-2.5-flash',
     contents: `${SYSTEM_PROMPT}\n\nDocumento a analizar:\n\n${text}`,
     config: { responseMimeType: 'application/json', responseSchema },
   });
@@ -100,7 +100,7 @@ export const analyzeDocumentPDF = async (base64Data: string): Promise<DocumentAn
     { text: 'Analiza el PDF adjunto y extrae toda la información relevante para el Comité de Producto.' },
   ];
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-05-20',
+    model: 'gemini-2.5-flash',
     contents: { role: 'user', parts },
     config: { responseMimeType: 'application/json', responseSchema },
   });
@@ -114,7 +114,7 @@ export const analyzeProductRisks = async (
   const ai = getAI();
   const existingList = existingRisks.map(r => `- ${r.title} (${r.category})`).join('\n');
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-05-20',
+    model: 'gemini-2.5-flash',
     contents: `Eres el CRO de Global66. Analiza: **${productName}** — ${description}. Business case: ${businessCase}. Riesgos existentes:\n${existingList || 'Ninguno'}. Identifica hasta 8 riesgos nuevos. Usa español.`,
     config: {
       responseMimeType: 'application/json',
@@ -135,7 +135,7 @@ export const analyzeProductRisks = async (
 export const suggestMitigations = async (title: string, description: string, category: string): Promise<string> => {
   const ai = getAI();
   const r = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-05-20',
+    model: 'gemini-2.5-flash',
     contents: `Para una fintech de remesas (Global81), sugiere plan de mitigación en español para: "${title}" (${category}): ${description}. Máx. 150 palabras.`,
   });
   return r.text ?? '';
@@ -147,7 +147,7 @@ export const generateCommitteeSummary = async (
   const ai = getAI();
   const highRisks = risks.filter(r => r.riskLevel === 'muy_alto' || r.riskLevel === 'alto').length;
   const r = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-05-20',
+    model: 'gemini-2.5-flash',
     contents: `Resumen ejecutivo formal en español (máx. 120 palabras) para acta del Comité de Producto Global81: Producto: ${productName} | Gate: ${gate} | Resolución: ${resolution} | Riesgos: ${risks.length} (${highRisks} alto/muy alto) | Red Flags: ${redFlagsCount}`,
   });
   return r.text ?? '';
