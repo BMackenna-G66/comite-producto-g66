@@ -27,6 +27,19 @@
       }
       .print-only { display: none; }
     </style>
+  <script>
+    // SPA redirect fix for GitHub Pages — handle ?p= from 404.html
+    (function() {
+      var p = window.location.search.match(/[?&]p=([^&]+)/);
+      if (p) {
+        var decoded = decodeURIComponent(p[1]);
+        var q = decoded.match(/&q=(.*)/);
+        var path = q ? decoded.slice(0, decoded.indexOf('&q=')) : decoded;
+        var query = q ? '?' + decodeURIComponent(q[1]) : '';
+        window.history.replaceState(null, null, '/' + path + query + window.location.hash);
+      }
+    })();
+  </script>
   </head>
   <body class="bg-gray-50">
     <div id="root"></div>
