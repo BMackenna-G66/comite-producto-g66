@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle } from '../services/auth';
-import { isFirebaseConfigured } from '../services/firebase';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -9,10 +8,6 @@ export default function LoginPage() {
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
-    if (!isFirebaseConfigured()) {
-      setError('Firebase no está configurado. Revisa las variables de entorno en .env.local');
-      return;
-    }
     setLoading(true);
     setError('');
     try {
@@ -28,7 +23,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-navy-900 to-navy-800 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-navy-900 to-navy-800 px-8 py-10 text-center">
@@ -39,22 +33,13 @@ export default function LoginPage() {
 
           {/* Body */}
           <div className="px-8 py-8 space-y-6">
-            <div className="text-center">
-              <p className="text-gray-600 text-sm">
-                Plataforma para la gestión y aprobación de nuevos productos bajo los estándares regulatorios CMF / SFC / BCRA.
-              </p>
-            </div>
+            <p className="text-center text-gray-600 text-sm">
+              Plataforma para la gestión y aprobación de nuevos productos bajo los estándares regulatorios CMF / SFC / BCRA.
+            </p>
 
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
                 {error}
-              </div>
-            )}
-
-            {!isFirebaseConfigured() && (
-              <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg px-4 py-3 space-y-1">
-                <p className="font-semibold">⚠ Configuración requerida</p>
-                <p>Crea un archivo <code>.env.local</code> con las variables de Firebase. Ver <code>README.md</code>.</p>
               </div>
             )}
 
@@ -73,18 +58,15 @@ export default function LoginPage() {
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
               )}
-              {loading ? 'Iniciando sesión...' : 'Continuar con Google'}
+              {loading ? 'Iniciando sesión...' : 'Ingresar con Google'}
             </button>
 
             <p className="text-center text-xs text-gray-400">
-              Solo cuentas corporativas autorizadas por el administrador del sistema.
+              El primer usuario que ingresa se convierte en administrador automáticamente.
             </p>
           </div>
         </div>
-
-        <p className="text-center text-gray-500 text-xs mt-6">
-          G66 Group · Confidencial — Uso Interno
-        </p>
+        <p className="text-center text-gray-500 text-xs mt-6">G66 Group · Confidencial — Uso Interno</p>
       </div>
     </div>
   );

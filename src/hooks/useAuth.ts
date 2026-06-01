@@ -1,19 +1,19 @@
 import { useState, useEffect, createContext, useContext } from 'react';
-import { onAuthChange, getUserProfile, signOut as fbSignOut } from '../services/auth';
+import { onAuthChange, signOut as localSignOut, refreshSession } from '../services/auth';
 import { AppUser } from '../types';
 
 interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
   signOut: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   signOut: async () => {},
-  refreshUser: async () => {},
+  refreshUser: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -22,28 +22,23 @@ export const useAuthProvider = (): AuthContextType => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refreshUser = async () => {
+  const refreshUser = () => {
     if (user?.uid) {
-      const profile = await getUserProfile(user.uid);
-      setUser(profile);
+      const fresh = refreshSession(user.uid);
+      setUser(fresh);
     }
   };
 
   useEffect(() => {
-    const unsub = onAuthChange(async (firebaseUser) => {
-      if (firebaseUser) {
-        const profile = await getUserProfile(firebaseUser.uid);
-        setUser(profile);
-      } else {
-        setUser(null);
-      }
+    const unsub = onAuthChange((u) => {
+      setUser(u);
       setLoading(false);
     });
     return unsub;
   }, []);
 
   const signOut = async () => {
-    await fbSignOut();
+    await localSignOut();
     setUser(null);
   };
 

@@ -2,14 +2,13 @@ import { useEffect, useState } from 'react';
 import { getUsers, updateUserRole } from '../services/firestore';
 import { AppUser, UserRole, COMPANIES } from '../types';
 import { useAuth } from '../hooks/useAuth';
-import LoadingSpinner from '../components/LoadingSpinner';
 import UserAvatar from '../components/UserAvatar';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Administrador',
   member: 'Miembro del Comité',
   observer: 'Observador',
-  pending: 'Pendiente de aprobación',
+  pending: 'Pendiente',
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -20,11 +19,11 @@ const ROLE_COLORS: Record<UserRole, string> = {
 };
 
 export default function AdminPage() {
-  const { user: me } = useAuth();
+  const { user: me, refreshUser } = useAuth();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
-  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{ role: UserRole; company: string }>({ role: 'observer', company: 'Global81 SpA' });
 
   const reload = () => getUsers().then(setUsers).finally(() => setLoading(false));
@@ -35,21 +34,20 @@ export default function AdminPage() {
     <div className="p-6 text-gray-500">No tienes permisos para acceder a esta sección.</div>
   );
 
-  if (loading) return <LoadingSpinner />;
-
   const pending = users.filter(u => u.role === 'pending');
   const active = users.filter(u => u.role !== 'pending');
 
   const startEdit = (u: AppUser) => {
-    setEditingUser(u.uid);
+    setEditing(u.uid);
     setEditForm({ role: u.role, company: u.company });
   };
 
   const saveEdit = async (uid: string) => {
     setSaving(uid);
     await updateUserRole(uid, editForm.role, editForm.company);
-    setEditingUser(null);
+    setEditing(null);
     await reload();
+    if (uid === me?.uid) refreshUser();
     setSaving(null);
   };
 
@@ -57,13 +55,13 @@ export default function AdminPage() {
     <div className="p-6 space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-800">Administración de Usuarios</h1>
-        <p className="text-gray-500 text-sm mt-1">{users.length} usuario{users.length !== 1 ? 's' : ''} registrados</p>
+        <p className="text-gray-500 text-sm mt-1">{users.length} usuario{users.length !== 1 ? 's' : ''} registrados · datos en localStorage</p>
       </div>
 
       {pending.length > 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-yellow-500">⚠</span>
+            <span className="text-yellow-500 text-lg">⚠</span>
             <h2 className="font-semibold text-yellow-800 text-sm">{pending.length} usuario{pending.length !== 1 ? 's' : ''} esperando aprobación</h2>
           </div>
           {pending.map(u => (
@@ -77,8 +75,8 @@ export default function AdminPage() {
               </div>
               <div className="flex items-center gap-2">
                 <select
-                  value={editingUser === u.uid ? editForm.role : 'observer'}
-                  onChange={e => { startEdit(u); setEditForm(f => ({ ...f, role: e.target.value as UserRole })); }}
+                  defaultValue="member"
+                  onChange={e => setEditForm({ role: e.target.value as UserRole, company: editForm.company })}
                   className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   <option value="member">Miembro del Comité</option>
@@ -86,7 +84,12 @@ export default function AdminPage() {
                   <option value="admin">Administrador</option>
                 </select>
                 <button
-                  onClick={() => saveEdit(u.uid)}
+                  onClick={async () => {
+                    setSaving(u.uid);
+                    await updateUserRole(u.uid, editForm.role || 'member', u.company);
+                    await reload();
+                    setSaving(null);
+                  }}
                   disabled={saving === u.uid}
                   className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50"
                 >
@@ -102,76 +105,78 @@ export default function AdminPage() {
         <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-700 text-sm">Usuarios Activos ({active.length})</h2>
         </div>
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
-            <tr>
-              <th className="text-left px-5 py-3">Usuario</th>
-              <th className="text-left px-4 py-3">Empresa</th>
-              <th className="text-center px-4 py-3">Rol</th>
-              <th className="text-center px-4 py-3">Registro</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {active.map(u => (
-              <tr key={u.uid} className="hover:bg-gray-50">
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-3">
-                    <UserAvatar user={u} size="sm" />
-                    <div>
-                      <p className="font-medium text-gray-800">{u.name}</p>
-                      <p className="text-xs text-gray-400">{u.email}</p>
+        {loading ? (
+          <div className="p-8 text-center text-gray-400 text-sm">Cargando...</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+              <tr>
+                <th className="text-left px-5 py-3">Usuario</th>
+                <th className="text-left px-4 py-3">Empresa</th>
+                <th className="text-center px-4 py-3">Rol</th>
+                <th className="text-center px-4 py-3">Registro</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {active.map(u => (
+                <tr key={u.uid} className="hover:bg-gray-50">
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar user={u} size="sm" />
+                      <div>
+                        <p className="font-medium text-gray-800">{u.name}</p>
+                        <p className="text-xs text-gray-400">{u.email}</p>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  {editingUser === u.uid ? (
-                    <select value={editForm.company} onChange={e => setEditForm(f => ({ ...f, company: e.target.value }))} className="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand">
-                      {COMPANIES.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  ) : (
-                    <span className="text-xs text-gray-600">{u.company}</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  {editingUser === u.uid ? (
-                    <select value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value as UserRole }))} className="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand">
-                      <option value="admin">Administrador</option>
-                      <option value="member">Miembro</option>
-                      <option value="observer">Observador</option>
-                    </select>
-                  ) : (
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[u.role]}`}>{ROLE_LABELS[u.role]}</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-center text-xs text-gray-400">
-                  {new Date(u.createdAt).toLocaleDateString('es-CL')}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {u.uid !== me?.uid && (
-                    editingUser === u.uid ? (
+                  </td>
+                  <td className="px-4 py-3">
+                    {editing === u.uid ? (
+                      <select value={editForm.company} onChange={e => setEditForm(f => ({ ...f, company: e.target.value }))} className="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand">
+                        {COMPANIES.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-gray-600">{u.company}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {editing === u.uid ? (
+                      <select value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value as UserRole }))} className="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand">
+                        <option value="admin">Administrador</option>
+                        <option value="member">Miembro</option>
+                        <option value="observer">Observador</option>
+                      </select>
+                    ) : (
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[u.role]}`}>{ROLE_LABELS[u.role]}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center text-xs text-gray-400">
+                    {new Date(u.createdAt).toLocaleDateString('es-CL')}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {editing === u.uid ? (
                       <div className="flex gap-2 justify-end">
-                        <button onClick={() => setEditingUser(null)} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">Cancelar</button>
+                        <button onClick={() => setEditing(null)} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">Cancelar</button>
                         <button onClick={() => saveEdit(u.uid)} disabled={saving === u.uid} className="bg-brand text-white px-3 py-1 rounded-lg text-xs font-medium disabled:opacity-50">
                           {saving === u.uid ? '...' : 'Guardar'}
                         </button>
                       </div>
                     ) : (
-                      <button onClick={() => startEdit(u)} className="text-xs text-brand hover:underline">Editar</button>
-                    )
-                  )}
-                  {u.uid === me?.uid && <span className="text-xs text-gray-300">Tú</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      <button onClick={() => startEdit(u)} className="text-xs text-brand hover:underline">
+                        {u.uid === me?.uid ? 'Editar (tú)' : 'Editar'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
-      {/* Firestore Rules reminder */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-700 space-y-1">
-        <p className="font-semibold">💡 Recuerda configurar las reglas de Firestore</p>
-        <p>Las reglas de seguridad deben restringir lectura/escritura según el rol del usuario. Ver <code>README.md</code> para las reglas recomendadas.</p>
+        <p className="font-semibold">💾 Almacenamiento local</p>
+        <p>Los datos se guardan en <code>localStorage</code> de este navegador. Para producción con múltiples usuarios, conecta Firebase Firestore (ver README).</p>
       </div>
     </div>
   );
