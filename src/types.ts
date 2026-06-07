@@ -296,3 +296,189 @@ export const STATUS_LABELS: Record<GateStatus, string> = {
   rejected: 'Rechazado',
   blocked: 'Bloqueado',
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GRC / ERM LAYER — Capas 1-9
+// ═══════════════════════════════════════════════════════════════════════════
+
+// CAPA 1 — Matriz Corporativa
+export type CorporateRiskCategory =
+  | 'AML_COMPLIANCE' | 'FRAUD' | 'OPERATIONAL' | 'LEGAL' | 'REGULATORY'
+  | 'CYBERSECURITY' | 'PRIVACY' | 'REPUTATIONAL' | 'FINANCIAL' | 'STRATEGIC'
+  | 'BUSINESS_CONTINUITY';
+
+export const CORPORATE_RISK_CATEGORY_LABELS: Record<CorporateRiskCategory, string> = {
+  AML_COMPLIANCE: 'AML / Compliance', FRAUD: 'Fraude', OPERATIONAL: 'Operacional',
+  LEGAL: 'Legal', REGULATORY: 'Regulatorio', CYBERSECURITY: 'Ciberseguridad',
+  PRIVACY: 'Privacidad / Datos', REPUTATIONAL: 'Reputacional', FINANCIAL: 'Financiero',
+  STRATEGIC: 'Estratégico', BUSINESS_CONTINUITY: 'Continuidad del Negocio',
+};
+
+export type AppetiteLevel = 'Averse' | 'Minimal' | 'Cautious' | 'Open' | 'Hungry';
+export const APPETITE_LABELS: Record<AppetiteLevel, string> = {
+  Averse: 'Cero tolerancia', Minimal: 'Mínimo', Cautious: 'Cauteloso',
+  Open: 'Abierto', Hungry: 'Agresivo',
+};
+
+export interface CorporateRisk {
+  id: string;
+  title: string;
+  description: string;
+  category: CorporateRiskCategory;
+  owner: string;
+  businessUnit: string;
+  impact: 1 | 2 | 3 | 4 | 5;
+  probability: 1 | 2 | 3 | 4 | 5;
+  inherentRisk: number;
+  residualRisk: number;
+  appetiteLevel: AppetiteLevel;
+  status: 'Open' | 'Mitigating' | 'Accepted' | 'Closed';
+  relatedProducts: string[];
+  relatedControls: string[];
+  relatedIncidents: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// CAPA 2 — KRIs
+export type KRIStatus = 'green' | 'yellow' | 'red';
+
+export interface KRI {
+  id: string;
+  name: string;
+  category: CorporateRiskCategory;
+  description: string;
+  currentValue: number;
+  warningThreshold: number;
+  criticalThreshold: number;
+  unit: string;
+  measurementFrequency: 'daily' | 'weekly' | 'monthly' | 'quarterly';
+  owner: string;
+  source: string;
+  status: KRIStatus;
+  trend: 'up' | 'down' | 'stable';
+  lastUpdated: string;
+  historicalValues: { date: string; value: number }[];
+}
+
+export const getKRIStatus = (kri: KRI): KRIStatus => {
+  if (kri.currentValue >= kri.criticalThreshold) return 'red';
+  if (kri.currentValue >= kri.warningThreshold) return 'yellow';
+  return 'green';
+};
+
+// CAPA 3 — Risk Appetite
+export interface RiskAppetite {
+  id: string;
+  riskCategory: CorporateRiskCategory;
+  metric: string;
+  description: string;
+  targetValue: number;
+  warningValue: number;
+  criticalValue: number;
+  unit: string;
+  approvedBy: string;
+  approvalDate: string;
+  reviewDate: string;
+}
+
+// CAPA 4 — Eventos de Riesgo
+export type RiskEventStatus = 'Open' | 'Investigating' | 'Mitigating' | 'Closed';
+export type ImpactLevel = 'Critical' | 'High' | 'Medium' | 'Low' | 'Negligible';
+
+export interface RiskEvent {
+  id: string;
+  title: string;
+  description: string;
+  eventDate: string;
+  category: CorporateRiskCategory;
+  impactLevel: ImpactLevel;
+  affectedArea: string;
+  affectedCompanies: string[];
+  rootCause: string;
+  lossAmount: number;
+  currency: 'USD' | 'CLP' | 'COP' | 'ARS';
+  status: RiskEventStatus;
+  owner: string;
+  lessonsLearned: string;
+  relatedCorporateRiskId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// CAPA 5 — Pérdidas Operacionales
+export type LossType = 'Direct' | 'Indirect' | 'Regulatory' | 'Legal' | 'Reputational';
+
+export interface OperationalLoss {
+  id: string;
+  riskEventId: string;
+  lossType: LossType;
+  grossLoss: number;
+  recoveredAmount: number;
+  netLoss: number;
+  currency: 'USD' | 'CLP' | 'COP' | 'ARS';
+  date: string;
+  description: string;
+}
+
+// CAPA 6 — Control Testing
+export type ControlEffectiveness = 'Effective' | 'PartiallyEffective' | 'Ineffective' | 'NotTested';
+
+export interface ControlTest {
+  id: string;
+  controlId: string;
+  controlName: string;
+  riskCategory: CorporateRiskCategory;
+  testDate: string;
+  tester: string;
+  result: ControlEffectiveness;
+  effectivenessScore: number;
+  evidence: string;
+  findings: string;
+  recommendations: string;
+  nextTestDate: string;
+}
+
+// CAPA 7 — Regulatory Intelligence
+export type RegulatoryImpact = 'Critical' | 'High' | 'Medium' | 'Low';
+export type RegulatoryStatus = 'Monitoring' | 'Analyzing' | 'Implementing' | 'Completed';
+
+export const REGULATORS = ['CMF', 'UAF', 'SFC', 'UIAF', 'BCRA', 'CNV', 'SBS Perú', 'GAFI', 'OFAC', 'FinCEN'];
+export const REGULATORY_COUNTRIES = ['Chile', 'Colombia', 'Argentina', 'Perú', 'Internacional'];
+
+export interface RegulatoryUpdate {
+  id: string;
+  country: string;
+  regulator: string;
+  title: string;
+  summary: string;
+  publicationDate: string;
+  effectiveDate: string;
+  impactLevel: RegulatoryImpact;
+  affectedProcesses: string[];
+  affectedCompanies: string[];
+  status: RegulatoryStatus;
+  owner: string;
+  actionRequired: string;
+  createdAt: string;
+}
+
+// CAPA 8 — Audit Log
+export interface AuditLog {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'VIEW';
+  oldValue?: string;
+  newValue?: string;
+  performedBy: string;
+  performedAt: string;
+  module: string;
+}
+
+// Helper para impacto
+export const IMPACT_COLORS: Record<ImpactLevel, string> = {
+  Critical: 'bg-red-100 text-red-800', High: 'bg-orange-100 text-orange-700',
+  Medium: 'bg-yellow-100 text-yellow-700', Low: 'bg-blue-100 text-blue-700',
+  Negligible: 'bg-gray-100 text-gray-500',
+};
