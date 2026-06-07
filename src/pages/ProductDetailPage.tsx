@@ -6,6 +6,7 @@ import { Product, Risk, CommitteeSession, RedFlag, PRINCIPLES, RISK_CATEGORIES, 
 import LoadingSpinner from '../components/LoadingSpinner';
 import GateStatusBadge from '../components/GateStatusBadge';
 import RiskBadge from '../components/RiskBadge';
+import RiskDetailModal from '../components/RiskDetailModal';
 import RiskOwnershipTable from '../components/RiskOwnershipTable';
 
 type Tab = 'overview' | 'risks' | 'ownership' | 'sessions' | 'redflags';
@@ -25,6 +26,7 @@ export default function ProductDetailPage() {
   const [showRiskForm, setShowRiskForm] = useState(false);
   const [riskForm, setRiskForm] = useState({ title: '', description: '', category: '', macroprocess: '', process: '', impact: 3, probability: 3, owner: '', isRedFlag: false });
   const [mitLoading, setMitLoading] = useState<string | null>(null);
+  const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
 
   const canEdit = true;
 
@@ -127,6 +129,7 @@ export default function ProductDetailPage() {
   const gateStatuses = [product.gate1Status, product.gate2Status, product.gate3Status];
 
   return (
+    <>
     <div className="p-6 space-y-5 max-w-5xl">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
@@ -344,7 +347,7 @@ export default function ProductDetailPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {risks.map(r => (
-                    <tr key={r.id} className={`hover:bg-gray-50 ${r.isRedFlag ? 'bg-red-50' : ''}`}>
+                    <tr key={r.id} onClick={() => setSelectedRisk(r)} className={`cursor-pointer hover:bg-blue-50 ${r.isRedFlag ? 'bg-red-50' : ''}`}>
                       <td className="px-4 py-3">
                         <div className="font-medium text-gray-800">{r.title}</div>
                         <div className="text-xs text-gray-400 line-clamp-1">{r.description}</div>
@@ -452,5 +455,13 @@ export default function ProductDetailPage() {
         </div>
       )}
     </div>
+      {selectedRisk && (
+        <RiskDetailModal
+          risk={selectedRisk}
+          onClose={() => setSelectedRisk(null)}
+          onSaved={async () => { await reload(); setSelectedRisk(prev => prev ? (risks.find(r => r.id === prev.id) ?? null) : null); }}
+        />
+      )}
+    </>
   );
 }

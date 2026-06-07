@@ -59,6 +59,8 @@ export interface Risk {
   owner: string;
   mitigationPlan?: string;
   isRedFlag: boolean;
+  observations?: string;
+  reviewHistory?: { date: string; author: string; comment: string; }[];
   createdAt: string;
   updatedAt: string;
 }

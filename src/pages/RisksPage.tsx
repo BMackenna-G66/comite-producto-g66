@@ -4,20 +4,19 @@ import { getAllRisks, getProducts } from '../services/firestore';
 import { Risk, Product, RiskLevel, RISK_LEVEL_LABELS } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
 import RiskBadge from '../components/RiskBadge';
+import RiskDetailModal from '../components/RiskDetailModal';
 
 export default function RisksPage() {
   const [risks, setRisks] = useState<Risk[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
+  const reload = () => Promise.all([getAllRisks(), getProducts()]).then(([r, p]) => { setRisks(r); setProducts(p); }).finally(() => setLoading(false));
   const [filterLevel, setFilterLevel] = useState<RiskLevel | 'all'>('all');
   const [filterCategory, setFilterCategory] = useState('all');
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    Promise.all([getAllRisks(), getProducts()])
-      .then(([r, p]) => { setRisks(r); setProducts(p); })
-      .finally(() => setLoading(false));
-  }, []);
+  useEffect(() => { reload(); }, []);
 
   if (loading) return <LoadingSpinner />;
 
@@ -94,7 +93,7 @@ export default function RisksPage() {
               <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400">No hay riesgos con los filtros seleccionados.</td></tr>
             )}
             {filtered.map(r => (
-              <tr key={r.id} className={`hover:bg-gray-50 ${r.isRedFlag ? 'bg-red-50' : ''}`}>
+              <tr key={r.id} onClick={() => setSelectedRisk(r)} className={`cursor-pointer hover:bg-blue-50 ${r.isRedFlag ? 'bg-red-50' : ''}`}>
                 <td className="px-5 py-3 max-w-xs">
                   <div className="flex items-start gap-2">
                     {r.isRedFlag && <span className="text-red-500 shrink-0 mt-0.5" title="Red Flag">🚩</span>}
@@ -129,6 +128,14 @@ export default function RisksPage() {
           </tbody>
         </table>
       </div>
+
+      {selectedRisk && (
+        <RiskDetailModal
+          risk={selectedRisk}
+          onClose={() => setSelectedRisk(null)}
+          onSaved={async () => { await reload(); setSelectedRisk(prev => prev ? (risks.find(r => r.id === prev.id) ?? null) : null); }}
+        />
+      )}
     </div>
   );
 }
