@@ -46,39 +46,9 @@ VITE_GEMINI_API_KEY=AIza...
 
 ### 4. Reglas de Firestore
 
-En la consola de Firebase → Firestore → Reglas, pega:
+En la consola de Firebase → Firestore → Reglas, pega el contenido de [`firestore.rules`](./firestore.rules) (o usa `firebase deploy --only firestore:rules` si tienes el Firebase CLI configurado).
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // Users: any authenticated user can read their own doc; admin can read all
-    match /users/{uid} {
-      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
-      allow write: if request.auth != null && (request.auth.uid == uid || isAdmin());
-    }
-
-    // Products, risks, sessions, etc: authenticated non-pending users
-    match /{collection}/{docId} {
-      allow read: if isActive();
-      allow write: if isMember();
-    }
-
-    function isAdmin() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-    function isMember() {
-      let role = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return role == 'admin' || role == 'member';
-    }
-    function isActive() {
-      let role = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return role == 'admin' || role == 'member' || role == 'observer';
-    }
-  }
-}
-```
+Un usuario nunca puede cambiar su propio rol o empresa — solo un admin puede hacerlo. Todo usuario nuevo entra como `pending` (ver siguiente sección para promover al primer admin).
 
 ### 5. Correr en local
 
@@ -128,7 +98,11 @@ En Firebase → Authentication → Settings → Authorized domains → Agrega:
 | `observer` | Solo lectura |
 | `pending` | Sin acceso hasta que el admin asigne un rol |
 
-> El primer usuario que inicia sesión con Google es automáticamente `admin`.
+> **Todo usuario nuevo entra como `pending`**, incluido el primero — no hay auto-admin.
+> Para crear el primer admin: inicia sesión una vez con tu cuenta de Google, luego ve a
+> Firebase Console → Firestore Database → colección `users` → tu documento → cambia el
+> campo `role` a `admin` manualmente. Después de eso, ya puedes aprobar al resto del
+> comité desde `/admin` dentro de la app.
 
 ---
 
