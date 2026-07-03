@@ -1,12 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle } from '../services/auth';
 import { isFirebaseConfigured } from '../services/firebase';
+import { useAuth } from '../hooks/useAuth';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (user) navigate('/');
+  }, [user, navigate]);
 
   const handleLogin = async () => {
     if (!isFirebaseConfigured()) {
@@ -16,11 +22,11 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
+      // signInWithRedirect navega fuera de la página — no hay nada que
+      // hacer después de esto, el resultado se procesa al volver (useAuth).
       await signInWithGoogle();
-      navigate('/');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al iniciar sesión');
-    } finally {
       setLoading(false);
     }
   };

@@ -1,5 +1,7 @@
 import { useState, useEffect, createContext, useContext } from 'react';
-import { onAuthChange, getUserProfile, signOut as fbSignOut } from '../services/auth';
+import { getRedirectResult } from 'firebase/auth';
+import { auth } from '../services/firebase';
+import { onAuthChange, getUserProfile, getOrCreateUserProfile, signOut as fbSignOut } from '../services/auth';
 import { AppUser } from '../types';
 
 interface AuthContextType {
@@ -30,9 +32,15 @@ export const useAuthProvider = (): AuthContextType => {
   };
 
   useEffect(() => {
+    // Captura errores del regreso del redirect (p.ej. cuenta ya vinculada a
+    // otro proveedor). El resultado exitoso lo entrega onAuthStateChanged.
+    getRedirectResult(auth).catch((err) => {
+      console.error('Error al completar el inicio de sesión con Google:', err);
+    });
+
     const unsub = onAuthChange(async (firebaseUser) => {
       if (firebaseUser) {
-        const profile = await getUserProfile(firebaseUser.uid);
+        const profile = await getOrCreateUserProfile(firebaseUser);
         setUser(profile);
       } else {
         setUser(null);
