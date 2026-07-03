@@ -1,18 +1,15 @@
-import { GoogleAuthProvider, signInWithRedirect, signOut as fbSignOut, onAuthStateChanged, User } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from './firebase';
 import { AppUser } from '../types';
 
 const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ prompt: 'select_account' });
 
-// signInWithRedirect en vez de signInWithPopup: en sitios estáticos (GitHub
-// Pages) el popup no puede comunicarse de vuelta con la pestaña principal
-// porque authDomain (*.firebaseapp.com) y el origen de la app son distintos
-// sitios — el popup se cierra y la app nunca recibe el resultado. El
-// redirect evita ese problema por completo.
-export const signInWithGoogle = (): Promise<never> => {
+export const signInWithGoogle = async (): Promise<User> => {
   if (!isFirebaseConfigured()) throw new Error('Firebase no configurado');
-  return signInWithRedirect(auth, provider);
+  const result = await signInWithPopup(auth, provider);
+  return result.user;
 };
 
 export const signOut = () => fbSignOut(auth);
