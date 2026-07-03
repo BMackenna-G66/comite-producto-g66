@@ -1,9 +1,9 @@
 // Firestore-based persistence — estado compartido entre todos los miembros del comité
 import {
-  collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, query, where,
+  collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Product, Risk, CommitteeSession, RedFlag, Commitment, AppUser, UserRole, riskLevelFromScore } from '../types';
+import { Product, Risk, CommitteeSession, RedFlag, Commitment, AppUser, UserRole, Invite, riskLevelFromScore } from '../types';
 
 const now = () => new Date().toISOString();
 
@@ -44,6 +44,17 @@ export const getUsers = async (): Promise<AppUser[]> =>
 
 export const updateUserRole = async (uid: string, role: UserRole, company: string) =>
   patch('users', uid, { role, company });
+
+// ─── INVITES ─────────────────────────────────────────────────────────────────
+export const getInvites = async (): Promise<Invite[]> =>
+  (await listAll<Invite>('invites')).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+export const createInvite = async (data: Omit<Invite, 'createdAt'>): Promise<void> => {
+  const email = data.email.toLowerCase();
+  await setDoc(doc(db, 'invites', email), { ...data, email, createdAt: now() });
+};
+
+export const deleteInvite = async (email: string) => remove('invites', email.toLowerCase());
 
 // ─── PRODUCTS ────────────────────────────────────────────────────────────────
 export const getProducts = async (): Promise<Product[]> =>

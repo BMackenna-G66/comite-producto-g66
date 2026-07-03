@@ -7,9 +7,15 @@ service cloud.firestore {
     // cambiar su propio rol/empresa — eso requiere ser admin.
     match /users/{uid} {
       allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      // El rol de creación debe ser 'pending', salvo que exista una invitación
+      // (precargada por un admin) para el email de quien se está registrando —
+      // en ese caso se le asigna directamente el rol de la invitación.
       allow create: if request.auth != null
         && request.auth.uid == uid
-        && request.resource.data.role == 'pending';
+        && (
+          request.resource.data.role == 'pending'
+          || request.resource.data.role == get(/databases/$(database)/documents/invites/$(request.auth.token.email.lower())).data.role
+        );
       allow update: if request.auth != null && (
         isAdmin() ||
         (request.auth.uid == uid
@@ -19,10 +25,23 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Products, risks, sessions, etc: usuarios autenticados no-pending
+    // Invitaciones: cualquier usuario autenticado puede leer/borrar SOLO la
+    // invitación de su propio email (para autoaprobarse al registrarse); solo
+    // un admin puede listarlas todas o crear/editar invitaciones.
+    match /invites/{email} {
+      allow get: if request.auth != null && request.auth.token.email.lower() == email;
+      allow delete: if request.auth != null && (request.auth.token.email.lower() == email || isAdmin());
+      allow list, create, update: if isAdmin();
+    }
+
+    // Products, risks, sessions, etc: usuarios autenticados no-pending.
+    // Excluye 'users' e 'invites' — esas tienen sus propias reglas arriba y
+    // Firestore combina (OR) todas las reglas que matchean un mismo path, así
+    // que sin esta exclusión cualquier 'member' podría escribir sobre
+    // documentos de usuarios/invitaciones ajenos vía esta regla genérica.
     match /{collection}/{docId} {
-      allow read: if isActive();
-      allow write: if isMember();
+      allow read: if !(collection in ['users', 'invites']) && isActive();
+      allow write: if !(collection in ['users', 'invites']) && isMember();
     }
 
     function isAdmin() {
