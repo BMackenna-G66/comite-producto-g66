@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'member' | 'observer' | 'pending';
+export type UserRole = 'admin' | 'member' | 'observer' | 'pending' | 'rejected';
 export type GateStatus = 'pending' | 'in_progress' | 'approved' | 'rejected' | 'blocked';
 export type ProductStatus = 'draft' | 'gate1' | 'gate2' | 'gate3' | 'approved' | 'rejected';
 export type RiskLevel = 'muy_alto' | 'alto' | 'moderado' | 'bajo' | 'muy_bajo';
@@ -12,6 +12,15 @@ export interface AppUser {
   photoURL?: string;
   role: UserRole;
   company: string;
+  createdAt: string;
+}
+
+export interface Invite {
+  email: string;
+  role: UserRole;
+  company: string;
+  invitedBy: string;
+  invitedByName: string;
   createdAt: string;
 }
 
