@@ -1,36 +1,18 @@
-import { GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, onAuthStateChanged, User } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithRedirect, signOut as fbSignOut, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from './firebase';
 import { AppUser } from '../types';
 
 const provider = new GoogleAuthProvider();
 
-export const signInWithGoogle = async (): Promise<AppUser | null> => {
+// signInWithRedirect en vez de signInWithPopup: en sitios estáticos (GitHub
+// Pages) el popup no puede comunicarse de vuelta con la pestaña principal
+// porque authDomain (*.firebaseapp.com) y el origen de la app son distintos
+// sitios — el popup se cierra y la app nunca recibe el resultado. El
+// redirect evita ese problema por completo.
+export const signInWithGoogle = (): Promise<never> => {
   if (!isFirebaseConfigured()) throw new Error('Firebase no configurado');
-  const result = await signInWithPopup(auth, provider);
-  const { user } = result;
-
-  const userRef = doc(db, 'users', user.uid);
-  const snap = await getDoc(userRef);
-
-  if (!snap.exists()) {
-    // Todo usuario nuevo entra como 'pending' — las reglas de Firestore
-    // rechazan cualquier otro rol en la creación. El primer admin se
-    // promueve manualmente desde la consola de Firebase (ver README).
-    const newUser: Omit<AppUser, 'createdAt'> & { createdAt: unknown } = {
-      uid: user.uid,
-      email: user.email ?? '',
-      name: user.displayName ?? user.email ?? '',
-      photoURL: user.photoURL ?? '',
-      role: 'pending',
-      company: 'Global81 SpA',
-      createdAt: serverTimestamp(),
-    };
-    await setDoc(userRef, newUser);
-    return { ...newUser, createdAt: new Date().toISOString() } as AppUser;
-  }
-
-  return snap.data() as AppUser;
+  return signInWithRedirect(auth, provider);
 };
 
 export const signOut = () => fbSignOut(auth);
@@ -41,4 +23,26 @@ export const onAuthChange = (callback: (user: User | null) => void) =>
 export const getUserProfile = async (uid: string): Promise<AppUser | null> => {
   const snap = await getDoc(doc(db, 'users', uid));
   return snap.exists() ? (snap.data() as AppUser) : null;
+};
+
+// Se llama en cada cambio de estado de auth (incluido el regreso del
+// redirect). Todo usuario nuevo entra como 'pending' — las reglas de
+// Firestore rechazan cualquier otro rol en la creación. El primer admin se
+// promueve manualmente desde la consola de Firebase (ver README).
+export const getOrCreateUserProfile = async (user: User): Promise<AppUser> => {
+  const userRef = doc(db, 'users', user.uid);
+  const snap = await getDoc(userRef);
+  if (snap.exists()) return snap.data() as AppUser;
+
+  const newUser: Omit<AppUser, 'createdAt'> & { createdAt: unknown } = {
+    uid: user.uid,
+    email: user.email ?? '',
+    name: user.displayName ?? user.email ?? '',
+    photoURL: user.photoURL ?? '',
+    role: 'pending',
+    company: 'Global81 SpA',
+    createdAt: serverTimestamp(),
+  };
+  await setDoc(userRef, newUser);
+  return { ...newUser, createdAt: new Date().toISOString() } as AppUser;
 };
