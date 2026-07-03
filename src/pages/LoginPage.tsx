@@ -22,9 +22,8 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      // signInWithRedirect navega fuera de la página — no hay nada que
-      // hacer después de esto, el resultado se procesa al volver (useAuth).
       await signInWithGoogle();
+      // El efecto de arriba redirige a '/' cuando `user` se actualiza.
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al iniciar sesión');
       setLoading(false);
