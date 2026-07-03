@@ -1,5 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthContext, useAuthProvider } from './hooks/useAuth';
+import ProtectedRoute from './components/ProtectedRoute';
 import Sidebar from './components/Sidebar';
+import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ProductsPage from './pages/ProductsPage';
 import ProductDetailPage from './pages/ProductDetailPage';
@@ -27,35 +30,48 @@ function AppLayout({ children, fullHeight = false }: { children: React.ReactNode
   );
 }
 
-export default function App() {
+function Protected({ children, fullHeight = false }: { children: React.ReactNode; fullHeight?: boolean }) {
   return (
-    <BrowserRouter basename="/comite-producto-g66">
-      <Routes>
-        {/* Gobierno */}
-        <Route path="/" element={<AppLayout><DashboardPage /></AppLayout>} />
-        <Route path="/products" element={<AppLayout><ProductsPage /></AppLayout>} />
-        <Route path="/products/new" element={<AppLayout><NewProductPage /></AppLayout>} />
-        <Route path="/products/:id" element={<AppLayout><ProductDetailPage /></AppLayout>} />
-        <Route path="/analyze" element={<AppLayout><DocumentAnalysisPage /></AppLayout>} />
-        <Route path="/sessions" element={<AppLayout><SessionsPage /></AppLayout>} />
-        <Route path="/sessions/new" element={<AppLayout><CommitteeSessionPage /></AppLayout>} />
-        <Route path="/sessions/:id" element={<AppLayout><CommitteeSessionPage /></AppLayout>} />
-        {/* Risk Management */}
-        <Route path="/risks" element={<AppLayout><RisksPage /></AppLayout>} />
-        <Route path="/corporate-risks" element={<AppLayout><CorporateRisksPage /></AppLayout>} />
-        <Route path="/kris" element={<AppLayout><KRIsPage /></AppLayout>} />
-        <Route path="/appetite" element={<AppLayout><RiskAppetitePage /></AppLayout>} />
-        {/* Eventos & Controles */}
-        <Route path="/events" element={<AppLayout><RiskEventsPage /></AppLayout>} />
-        <Route path="/controls" element={<AppLayout><ControlTestingPage /></AppLayout>} />
-        {/* Compliance */}
-        <Route path="/regulatory" element={<AppLayout><RegulatoryPage /></AppLayout>} />
-        {/* IA */}
-        <Route path="/copilot" element={<AppLayout fullHeight><AICopilotPage /></AppLayout>} />
-        {/* Sistema */}
-        <Route path="/admin" element={<AppLayout><AdminPage /></AppLayout>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <ProtectedRoute>
+      <AppLayout fullHeight={fullHeight}>{children}</AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+export default function App() {
+  const auth = useAuthProvider();
+
+  return (
+    <AuthContext.Provider value={auth}>
+      <BrowserRouter basename="/comite-producto-g66">
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          {/* Gobierno */}
+          <Route path="/" element={<Protected><DashboardPage /></Protected>} />
+          <Route path="/products" element={<Protected><ProductsPage /></Protected>} />
+          <Route path="/products/new" element={<Protected><NewProductPage /></Protected>} />
+          <Route path="/products/:id" element={<Protected><ProductDetailPage /></Protected>} />
+          <Route path="/analyze" element={<Protected><DocumentAnalysisPage /></Protected>} />
+          <Route path="/sessions" element={<Protected><SessionsPage /></Protected>} />
+          <Route path="/sessions/new" element={<Protected><CommitteeSessionPage /></Protected>} />
+          <Route path="/sessions/:id" element={<Protected><CommitteeSessionPage /></Protected>} />
+          {/* Risk Management */}
+          <Route path="/risks" element={<Protected><RisksPage /></Protected>} />
+          <Route path="/corporate-risks" element={<Protected><CorporateRisksPage /></Protected>} />
+          <Route path="/kris" element={<Protected><KRIsPage /></Protected>} />
+          <Route path="/appetite" element={<Protected><RiskAppetitePage /></Protected>} />
+          {/* Eventos & Controles */}
+          <Route path="/events" element={<Protected><RiskEventsPage /></Protected>} />
+          <Route path="/controls" element={<Protected><ControlTestingPage /></Protected>} />
+          {/* Compliance */}
+          <Route path="/regulatory" element={<Protected><RegulatoryPage /></Protected>} />
+          {/* IA */}
+          <Route path="/copilot" element={<Protected fullHeight><AICopilotPage /></Protected>} />
+          {/* Sistema */}
+          <Route path="/admin" element={<Protected><AdminPage /></Protected>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthContext.Provider>
   );
 }

@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import UserAvatar from './UserAvatar';
 
 const NAV_SECTIONS = [
   {
@@ -47,6 +49,8 @@ const NAV_SECTIONS = [
 ];
 
 export default function Sidebar() {
+  const { user, signOut } = useAuth();
+
   return (
     <aside className="w-64 min-h-screen bg-navy-900 text-white flex flex-col no-print overflow-y-auto">
       {/* Logo */}
@@ -85,6 +89,26 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
+
+      {/* Usuario */}
+      {user && (
+        <div className="px-4 py-3 border-t border-navy-700 shrink-0">
+          <div className="flex items-center gap-3">
+            <UserAvatar user={user} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium truncate">{user.name}</p>
+              <p className="text-xs text-gray-400 truncate">{user.company}</p>
+            </div>
+            <button
+              onClick={signOut}
+              title="Cerrar sesión"
+              className="text-gray-400 hover:text-white text-sm shrink-0"
+            >
+              ⏻
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="px-4 py-3 border-t border-navy-700 text-xs text-gray-500 text-center shrink-0">
         G66 Group · GRC Platform
