@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getProduct, getRisks, getCommitteeSessions, getRedFlags, getProductLinks, createProductLink, deleteProductLink, updateProduct, createRisk, updateRisk, deleteRisk } from '../services/firestore';
-import { analyzeProductRisks, suggestMitigations } from '../services/geminiService';
-import { Product, Risk, CommitteeSession, RedFlag, ProductLink, PRINCIPLES, RISK_CATEGORIES, RoamState, riskLevelFromScore } from '../types';
+import { analyzeProductRisks, suggestMitigations, analyzeCountryScope } from '../services/geminiService';
+import { Product, Risk, CommitteeSession, RedFlag, ProductLink, ProductPlanning, PRINCIPLES, RISK_CATEGORIES, RISK_LEVEL_LABELS, STATUS_LABELS, GATE_LABELS, RoamState, riskLevelFromScore } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
 import GateStatusBadge from '../components/GateStatusBadge';
@@ -10,7 +10,20 @@ import RiskBadge from '../components/RiskBadge';
 import RiskDetailModal from '../components/RiskDetailModal';
 import RiskOwnershipTable from '../components/RiskOwnershipTable';
 
-type Tab = 'overview' | 'risks' | 'ownership' | 'sessions' | 'redflags' | 'links';
+type Tab = 'overview' | 'risks' | 'ownership' | 'sessions' | 'redflags' | 'links' | 'planning' | 'report';
+
+const PLANNING_FIELDS: { key: keyof ProductPlanning; label: string; kind: 'date' | 'url'; placeholder?: string }[] = [
+  { key: 'startDate', label: 'Fecha de Inicio', kind: 'date' },
+  { key: 'eta', label: 'ETA', kind: 'date' },
+  { key: 'ganttUrl', label: 'Gantt', kind: 'url', placeholder: 'Link a Google Sheets / Excel del Gantt' },
+  { key: 'jiraUrl', label: 'Backlog Jira', kind: 'url', placeholder: 'Link al board de Jira' },
+  { key: 'figmaUrl', label: 'UX Figma', kind: 'url', placeholder: 'Link al diseño en Figma' },
+  { key: 'scopeDocUrl', label: 'Documento de Alcance', kind: 'url', placeholder: 'Link al documento de alcance' },
+  { key: 'flowDiagramUrl', label: 'Diagrama de Flujo', kind: 'url', placeholder: 'Link a Miro / Lucidchart' },
+  { key: 'onePagerUrl', label: 'One Pager', kind: 'url', placeholder: 'Link al one pager' },
+];
+
+const EMPTY_PLANNING: ProductPlanning = {};
 
 const LINK_ICONS: { match: RegExp; icon: string; label: string }[] = [
   { match: /figma\.com/i, icon: '🎨', label: 'Figma' },
@@ -44,6 +57,10 @@ export default function ProductDetailPage() {
   const [linkForm, setLinkForm] = useState({ title: '', url: '' });
   const [linkError, setLinkError] = useState('');
   const [linkBusy, setLinkBusy] = useState(false);
+  const [planningForm, setPlanningForm] = useState<ProductPlanning>(EMPTY_PLANNING);
+  const [planningSaving, setPlanningSaving] = useState(false);
+  const [planningSaved, setPlanningSaved] = useState(false);
+  const [countryScopeLoading, setCountryScopeLoading] = useState(false);
 
   const canEdit = true;
 
@@ -60,6 +77,12 @@ export default function ProductDetailPage() {
   useEffect(() => {
     reload().finally(() => setLoading(false));
   }, [id]);
+
+  // Sincroniza el formulario de planificación solo cuando cambia el producto
+  // (no en cada reload()), para no pisar ediciones en curso.
+  useEffect(() => {
+    if (product) setPlanningForm(product.planning ?? {});
+  }, [product?.id]);
 
   const handleAIAnalysis = async () => {
     if (!product) return;
@@ -154,6 +177,36 @@ export default function ProductDetailPage() {
   const handleDeleteLink = async (linkId: string) => {
     await deleteProductLink(linkId);
     await reload();
+  };
+
+  const handleSavePlanning = async () => {
+    if (!product) return;
+    setPlanningSaving(true);
+    try {
+      const cleaned: ProductPlanning = {};
+      for (const f of PLANNING_FIELDS) {
+        const v = planningForm[f.key];
+        if (v) cleaned[f.key] = f.kind === 'url' ? normalizeUrl(v) : v;
+      }
+      await updateProduct(product.id, { planning: cleaned });
+      setPlanningSaved(true);
+      setTimeout(() => setPlanningSaved(false), 2000);
+      await reload();
+    } finally {
+      setPlanningSaving(false);
+    }
+  };
+
+  const handleAnalyzeCountryScope = async () => {
+    if (!product) return;
+    setCountryScopeLoading(true);
+    try {
+      const result = await analyzeCountryScope(product.name, product.description, product.businessCase, product.companies);
+      await updateProduct(product.id, { countryScope: result });
+      await reload();
+    } finally {
+      setCountryScopeLoading(false);
+    }
   };
 
   const handleRoamUpdate = async (riskId: string, status: RoamState) => {
@@ -256,13 +309,13 @@ export default function ProductDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 no-print overflow-x-auto">
         <div className="flex gap-0">
-          {(['overview', 'risks', 'ownership', 'sessions', 'redflags', 'links'] as Tab[]).map(t => (
+          {(['overview', 'risks', 'ownership', 'sessions', 'redflags', 'links', 'planning', 'report'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                 tab === t ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -271,7 +324,9 @@ export default function ProductDetailPage() {
                 : t === 'ownership' ? `Responsables Comité`
                 : t === 'sessions' ? `Sesiones (${sessions.length})`
                 : t === 'redflags' ? `Red Flags (${redFlags.filter(r => r.status === 'active').length})`
-                : `Enlaces (${links.length})`}
+                : t === 'links' ? `Enlaces (${links.length})`
+                : t === 'planning' ? 'Planificación'
+                : 'Reporte'}
             </button>
           ))}
         </div>
@@ -323,6 +378,51 @@ export default function ProductDetailPage() {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === 'overview' && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Cobertura por País (IA)</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Determina qué países aplican directa o indirectamente, para validar que el Oficial de Cumplimiento correspondiente quede en el alcance del comité.</p>
+            </div>
+            {canEdit && (
+              <button onClick={handleAnalyzeCountryScope} disabled={countryScopeLoading} className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-purple-700 disabled:opacity-50 shrink-0">
+                {countryScopeLoading ? '⟳ Analizando...' : '✦ Analizar con IA'}
+              </button>
+            )}
+          </div>
+
+          {!product.countryScope ? (
+            <p className="text-xs text-gray-400 italic">Aún no se ha ejecutado el análisis.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {product.countryScope.entries.map((e, i) => (
+                  <span key={i} className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                    e.scope === 'directo' ? 'bg-red-100 text-red-700' :
+                    e.scope === 'indirecto' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-gray-100 text-gray-500'
+                  }`} title={e.reasoning}>
+                    {e.country} · {e.scope === 'directo' ? 'Directo' : e.scope === 'indirecto' ? 'Indirecto' : 'Fuera de alcance'}
+                  </span>
+                ))}
+              </div>
+              <div className="space-y-1">
+                {product.countryScope.entries.map((e, i) => (
+                  <p key={i} className="text-xs text-gray-500"><span className="font-medium text-gray-700">{e.country}:</span> {e.reasoning}</p>
+                ))}
+              </div>
+              {product.countryScope.warning && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                  ⚠ {product.countryScope.warning}
+                </div>
+              )}
+              <p className="text-xs text-gray-300">Último análisis: {new Date(product.countryScope.analyzedAt).toLocaleString('es-CL')}</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -562,6 +662,151 @@ export default function ProductDetailPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {tab === 'planning' && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5">
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Fechas</h3>
+            <div className="grid grid-cols-2 gap-4">
+              {PLANNING_FIELDS.filter(f => f.kind === 'date').map(f => (
+                <div key={f.key}>
+                  <label className="text-xs text-gray-500 mb-1 block">{f.label}</label>
+                  <input
+                    type="date"
+                    disabled={!canEdit}
+                    value={planningForm[f.key] ?? ''}
+                    onChange={e => setPlanningForm(p => ({ ...p, [f.key]: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-gray-50"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Enlaces de referencia</h3>
+            <div className="space-y-3">
+              {PLANNING_FIELDS.filter(f => f.kind === 'url').map(f => (
+                <div key={f.key}>
+                  <label className="text-xs text-gray-500 mb-1 block">{f.label}</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      disabled={!canEdit}
+                      value={planningForm[f.key] ?? ''}
+                      onChange={e => setPlanningForm(p => ({ ...p, [f.key]: e.target.value }))}
+                      placeholder={f.placeholder}
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-gray-50"
+                    />
+                    {planningForm[f.key] && (
+                      <a href={normalizeUrl(planningForm[f.key]!)} target="_blank" rel="noopener noreferrer" title="Abrir enlace" className="text-brand text-sm shrink-0">↗</a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {canEdit && (
+            <div className="flex justify-end">
+              <button
+                onClick={handleSavePlanning}
+                disabled={planningSaving}
+                className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${planningSaved ? 'bg-green-500 text-white' : 'bg-brand text-white hover:bg-brand-dark'} disabled:opacity-50`}
+              >
+                {planningSaving ? 'Guardando...' : planningSaved ? '✓ Guardado' : 'Guardar cambios'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'report' && (
+        <div className="space-y-4">
+          <div className="no-print flex justify-end">
+            <button onClick={() => window.print()} className="bg-brand text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-brand-dark">
+              🖨 Imprimir / Descargar Reporte
+            </button>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5">
+            <div className="print-only text-center pb-3 border-b mb-2">
+              <h1 className="text-xl font-bold">Reporte de Avance — Comité de Producto G66</h1>
+              <p className="text-sm">{product.name} · {new Date().toLocaleDateString('es-CL')}</p>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Producto</h3>
+              <p className="text-sm text-gray-800 font-medium">{product.name}</p>
+              <p className="text-xs text-gray-500">{product.ownerName} · {product.companies.join(', ')}</p>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Estado de Gates</h3>
+              <p className="text-sm text-gray-700">{GATE_LABELS[product.currentGate]}</p>
+              <div className="flex gap-4 text-xs text-gray-600 mt-1">
+                <span>Gate 1: {STATUS_LABELS[product.gate1Status]}</span>
+                <span>Gate 2: {STATUS_LABELS[product.gate2Status]}</span>
+                <span>Gate 3: {STATUS_LABELS[product.gate3Status]}</span>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Riesgos ({risks.length})</h3>
+              <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                {(['muy_alto', 'alto', 'moderado', 'bajo', 'muy_bajo'] as const).map(lvl => {
+                  const count = risks.filter(r => r.riskLevel === lvl).length;
+                  return count > 0 ? <span key={lvl}>{RISK_LEVEL_LABELS[lvl]}: {count}</span> : null;
+                })}
+                {risks.length === 0 && <span className="text-gray-400">Sin riesgos identificados.</span>}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Red Flags activas: {redFlags.filter(r => r.status === 'active').length}</p>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Sesiones de Comité ({sessions.length})</h3>
+              {sessions.length === 0 ? (
+                <p className="text-xs text-gray-400">Sin sesiones registradas.</p>
+              ) : (
+                <ul className="text-xs text-gray-600 space-y-0.5">
+                  {sessions.map(s => (
+                    <li key={s.id}>Gate {s.gate} · {new Date(s.sessionDate).toLocaleDateString('es-CL')} · {s.resolution}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {product.planning && (product.planning.startDate || product.planning.eta) && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Planificación</h3>
+                <div className="text-xs text-gray-600 space-y-0.5">
+                  {product.planning.startDate && <p>Fecha de Inicio: {product.planning.startDate}</p>}
+                  {product.planning.eta && <p>ETA: {product.planning.eta}</p>}
+                </div>
+              </div>
+            )}
+
+            {links.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Enlaces</h3>
+                <ul className="text-xs text-gray-600 space-y-0.5">
+                  {links.map(lk => <li key={lk.id}>{lk.title}: {lk.url}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {product.countryScope && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Cobertura por País</h3>
+                <ul className="text-xs text-gray-600 space-y-0.5">
+                  {product.countryScope.entries.map((e, i) => (
+                    <li key={i}>{e.country}: {e.scope === 'directo' ? 'Directo' : e.scope === 'indirecto' ? 'Indirecto' : 'Fuera de alcance'}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

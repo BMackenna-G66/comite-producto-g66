@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Part } from '@google/genai';
-import { Risk, RiskLevel, AIRiskAnalysis } from '../types';
+import { Risk, RiskLevel, AIRiskAnalysis, CountryScopeResult } from '../types';
 
 export type { AIRiskAnalysis };
 
@@ -130,6 +130,54 @@ export const analyzeProductRisks = async (
     },
   });
   return JSON.parse(response.text ?? '{}') as AIRiskAnalysis;
+};
+
+// Determina a qué países aplica un producto (directa o indirectamente), para
+// validar que el Oficial de Cumplimiento (OC) de cada país relevante quede
+// dentro del alcance del comité.
+export const analyzeCountryScope = async (
+  productName: string, description: string, businessCase: string, companies: string[]
+): Promise<CountryScopeResult> => {
+  const ai = getAI();
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: `Eres el Director de Riesgos (CRO) de Global66, fintech de remesas regulada por CMF (Chile), SFC (Colombia) y BCRA (Argentina), operando a través de Global81 SpA (Chile), GlobalCard S.A., Sedpe (Colombia) y Arpagos (Argentina).
+
+Analiza el siguiente producto y determina a qué países aplica, ya sea de forma directa (el producto opera, se comercializa o tiene clientes en ese país) o indirecta (hay flujo de datos, procesamiento, infraestructura compartida, o impacto regulatorio cruzado, aunque el producto no se lance ahí formalmente).
+
+Producto: **${productName}**
+Descripción: ${description}
+Business case: ${businessCase}
+Empresas del grupo involucradas: ${companies.join(', ') || 'No especificadas'}
+
+Para cada país relevante (evalúa al menos Chile, Colombia y Argentina, y agrega otros si el producto los menciona), indica el nivel de alcance ('directo', 'indirecto', o 'fuera_de_alcance' si claramente no aplica) y una justificación breve.
+
+Genera además una advertencia (campo "warning") en español, de máximo 3 frases, que le recuerde al comité qué Oficial de Cumplimiento (OC) por país debería estar incluido en la sesión según los países en alcance directo o indirecto. Si no hay ninguna advertencia relevante, deja el campo como string vacío.`,
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          entries: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                country: { type: Type.STRING },
+                scope: { type: Type.STRING, description: "'directo' | 'indirecto' | 'fuera_de_alcance'" },
+                reasoning: { type: Type.STRING },
+              },
+              required: ['country', 'scope', 'reasoning'],
+            },
+          },
+          warning: { type: Type.STRING },
+        },
+        required: ['entries', 'warning'],
+      },
+    },
+  });
+  const parsed = JSON.parse(response.text ?? '{}');
+  return { ...parsed, analyzedAt: new Date().toISOString() } as CountryScopeResult;
 };
 
 export const suggestMitigations = async (title: string, description: string, category: string): Promise<string> => {

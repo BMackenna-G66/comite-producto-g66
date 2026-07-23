@@ -46,6 +46,33 @@ export interface Product {
   sarlaftSaro?: string;
   technicalSpecs?: string;
   postSaleMonitoring?: string;
+  planning?: ProductPlanning;
+  countryScope?: CountryScopeResult;
+}
+
+export interface ProductPlanning {
+  startDate?: string;
+  eta?: string;
+  ganttUrl?: string;
+  jiraUrl?: string;
+  figmaUrl?: string;
+  scopeDocUrl?: string;
+  flowDiagramUrl?: string;
+  onePagerUrl?: string;
+}
+
+export type CountryScopeLevel = 'directo' | 'indirecto' | 'fuera_de_alcance';
+
+export interface CountryScopeEntry {
+  country: string;
+  scope: CountryScopeLevel;
+  reasoning: string;
+}
+
+export interface CountryScopeResult {
+  entries: CountryScopeEntry[];
+  warning: string;
+  analyzedAt: string;
 }
 
 export interface Risk {
