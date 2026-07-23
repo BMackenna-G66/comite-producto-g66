@@ -137,6 +137,16 @@ export interface RedFlag {
   closedAt?: string;
 }
 
+export interface ProductLink {
+  id: string;
+  productId: string;
+  title: string;
+  url: string;
+  addedBy: string;
+  addedByName: string;
+  createdAt: string;
+}
+
 export interface MemberOpinion {
   userId: string;
   userName: string;
