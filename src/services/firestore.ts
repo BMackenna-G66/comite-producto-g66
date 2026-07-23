@@ -3,7 +3,7 @@ import {
   collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Product, Risk, CommitteeSession, RedFlag, Commitment, AppUser, UserRole, Invite, riskLevelFromScore } from '../types';
+import { Product, Risk, CommitteeSession, RedFlag, ProductLink, Commitment, AppUser, UserRole, Invite, riskLevelFromScore } from '../types';
 
 const now = () => new Date().toISOString();
 
@@ -112,6 +112,16 @@ export const createRedFlag = async (data: Omit<RedFlag, 'id' | 'createdAt'>): Pr
 
 export const resolveRedFlag = async (id: string) =>
   patch('redflags', id, { status: 'closed', closedAt: now() });
+
+// ─── PRODUCT LINKS ───────────────────────────────────────────────────────────
+export const getProductLinks = async (productId: string): Promise<ProductLink[]> =>
+  (await listWhere<ProductLink>('productLinks', 'productId', productId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+export const createProductLink = async (data: Omit<ProductLink, 'id' | 'createdAt'>): Promise<string> =>
+  insert('productLinks', { ...data, createdAt: now() });
+
+export const deleteProductLink = async (id: string) => remove('productLinks', id);
 
 // ─── SESSIONS ────────────────────────────────────────────────────────────────
 export const getCommitteeSessions = async (productId: string): Promise<CommitteeSession[]> =>

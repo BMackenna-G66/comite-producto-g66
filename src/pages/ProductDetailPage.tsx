@@ -1,24 +1,37 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { getProduct, getRisks, getCommitteeSessions, getRedFlags, updateProduct, createRisk, updateRisk, deleteRisk } from '../services/firestore';
+import { getProduct, getRisks, getCommitteeSessions, getRedFlags, getProductLinks, createProductLink, deleteProductLink, updateProduct, createRisk, updateRisk, deleteRisk } from '../services/firestore';
 import { analyzeProductRisks, suggestMitigations } from '../services/geminiService';
-import { Product, Risk, CommitteeSession, RedFlag, PRINCIPLES, RISK_CATEGORIES, RoamState, riskLevelFromScore } from '../types';
+import { Product, Risk, CommitteeSession, RedFlag, ProductLink, PRINCIPLES, RISK_CATEGORIES, RoamState, riskLevelFromScore } from '../types';
+import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
 import GateStatusBadge from '../components/GateStatusBadge';
 import RiskBadge from '../components/RiskBadge';
 import RiskDetailModal from '../components/RiskDetailModal';
 import RiskOwnershipTable from '../components/RiskOwnershipTable';
 
-type Tab = 'overview' | 'risks' | 'ownership' | 'sessions' | 'redflags';
+type Tab = 'overview' | 'risks' | 'ownership' | 'sessions' | 'redflags' | 'links';
+
+const LINK_ICONS: { match: RegExp; icon: string; label: string }[] = [
+  { match: /figma\.com/i, icon: '🎨', label: 'Figma' },
+  { match: /docs\.google\.com\/spreadsheets|\.xlsx?$/i, icon: '📊', label: 'Excel / Sheets' },
+  { match: /drive\.google\.com/i, icon: '📁', label: 'Drive' },
+  { match: /docs\.google\.com\/document/i, icon: '📄', label: 'Google Docs' },
+  { match: /notion\.so/i, icon: '🗒️', label: 'Notion' },
+];
+
+const getLinkMeta = (url: string) => LINK_ICONS.find(l => l.match.test(url)) ?? { icon: '🔗', label: 'Enlace' };
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [sessions, setSessions] = useState<CommitteeSession[]>([]);
   const [redFlags, setRedFlags] = useState<RedFlag[]>([]);
+  const [links, setLinks] = useState<ProductLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
   const [aiLoading, setAiLoading] = useState(false);
@@ -27,16 +40,21 @@ export default function ProductDetailPage() {
   const [riskForm, setRiskForm] = useState({ title: '', description: '', category: '', macroprocess: '', process: '', impact: 3, probability: 3, owner: '', isRedFlag: false });
   const [mitLoading, setMitLoading] = useState<string | null>(null);
   const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [linkForm, setLinkForm] = useState({ title: '', url: '' });
+  const [linkError, setLinkError] = useState('');
+  const [linkBusy, setLinkBusy] = useState(false);
 
   const canEdit = true;
 
   const reload = async () => {
     if (!id) return;
-    const [p, r, s, rf] = await Promise.all([getProduct(id), getRisks(id), getCommitteeSessions(id), getRedFlags(id)]);
+    const [p, r, s, rf, lk] = await Promise.all([getProduct(id), getRisks(id), getCommitteeSessions(id), getRedFlags(id), getProductLinks(id)]);
     setProduct(p);
     setRisks(r);
     setSessions(s);
     setRedFlags(rf);
+    setLinks(lk);
   };
 
   useEffect(() => {
@@ -104,6 +122,37 @@ export default function ProductDetailPage() {
     });
     setShowRiskForm(false);
     setRiskForm({ title: '', description: '', category: '', macroprocess: '', process: '', impact: 3, probability: 3, owner: '', isRedFlag: false });
+    await reload();
+  };
+
+  const normalizeUrl = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
+
+  const handleAddLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!product) return;
+    const title = linkForm.title.trim();
+    const url = linkForm.url.trim();
+    if (!title || !url) { setLinkError('Completa el título y el link.'); return; }
+    setLinkError('');
+    setLinkBusy(true);
+    try {
+      await createProductLink({
+        productId: product.id,
+        title,
+        url: normalizeUrl(url),
+        addedBy: user?.uid ?? '',
+        addedByName: user?.name ?? 'Desconocido',
+      });
+      setLinkForm({ title: '', url: '' });
+      setShowLinkForm(false);
+      await reload();
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  const handleDeleteLink = async (linkId: string) => {
+    await deleteProductLink(linkId);
     await reload();
   };
 
@@ -209,7 +258,7 @@ export default function ProductDetailPage() {
       {/* Tabs */}
       <div className="border-b border-gray-200">
         <div className="flex gap-0">
-          {(['overview', 'risks', 'ownership', 'sessions', 'redflags'] as Tab[]).map(t => (
+          {(['overview', 'risks', 'ownership', 'sessions', 'redflags', 'links'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -221,7 +270,8 @@ export default function ProductDetailPage() {
                 : t === 'risks' ? `Riesgos (${risks.length})`
                 : t === 'ownership' ? `Responsables Comité`
                 : t === 'sessions' ? `Sesiones (${sessions.length})`
-                : `Red Flags (${redFlags.filter(r => r.status === 'active').length})`}
+                : t === 'redflags' ? `Red Flags (${redFlags.filter(r => r.status === 'active').length})`
+                : `Enlaces (${links.length})`}
             </button>
           ))}
         </div>
@@ -451,6 +501,66 @@ export default function ProductDetailPage() {
                 </div>
               </div>
             ))
+          )}
+        </div>
+      )}
+
+      {tab === 'links' && (
+        <div className="space-y-4">
+          {canEdit && (
+            <div className="flex justify-end">
+              <button onClick={() => setShowLinkForm(!showLinkForm)} className="bg-brand text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-brand-dark">
+                + Agregar Enlace
+              </button>
+            </div>
+          )}
+
+          {showLinkForm && (
+            <form onSubmit={handleAddLink} className="bg-white rounded-xl border border-brand shadow-sm p-5 space-y-3">
+              <h3 className="font-semibold text-sm text-gray-700">Nuevo Enlace</h3>
+              <p className="text-xs text-gray-400">Figma, Google Sheets/Excel, Drive, Notion o cualquier otro link relevante para este producto.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Título *</label>
+                  <input required value={linkForm.title} onChange={e => setLinkForm(f => ({ ...f, title: e.target.value }))} placeholder="Ej: Diseño Figma - Onboarding" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Link *</label>
+                  <input required value={linkForm.url} onChange={e => setLinkForm(f => ({ ...f, url: e.target.value }))} placeholder="https://..." className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+                </div>
+              </div>
+              {linkError && <p className="text-xs text-red-600">{linkError}</p>}
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => setShowLinkForm(false)} className="text-sm text-gray-500 px-3 py-1.5">Cancelar</button>
+                <button type="submit" disabled={linkBusy} className="bg-brand text-white px-4 py-1.5 rounded-lg text-sm disabled:opacity-50">{linkBusy ? '...' : 'Guardar'}</button>
+              </div>
+            </form>
+          )}
+
+          {links.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center text-gray-400 text-sm">
+              No hay enlaces cargados. Agrega Figma, Sheets, Drive u otros links relevantes.
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
+              {links.map(lk => {
+                const meta = getLinkMeta(lk.url);
+                return (
+                  <div key={lk.id} className="flex items-center justify-between gap-4 px-5 py-3">
+                    <a href={lk.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 min-w-0 group">
+                      <span className="text-lg shrink-0">{meta.icon}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 group-hover:text-brand truncate">{lk.title}</p>
+                        <p className="text-xs text-gray-400 truncate">{meta.label} · agregado por {lk.addedByName}</p>
+                      </div>
+                    </a>
+                    {canEdit && (
+                      <button onClick={() => handleDeleteLink(lk.id)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">✕</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
