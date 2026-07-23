@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
-import { getRiskAppetites, createRiskAppetite, updateRiskAppetite, getKRIs } from '../services/firestore';
-import { RiskAppetite, KRI, CorporateRiskCategory, CORPORATE_RISK_CATEGORY_LABELS, getKRIStatus } from '../types';
+import { getRiskAppetites, createRiskAppetite, updateRiskAppetite, getKRIs, getCorporateRisks } from '../services/firestore';
+import { RiskAppetite, KRI, CorporateRisk, CorporateRiskCategory, CORPORATE_RISK_CATEGORY_LABELS, getKRIStatus, PATRIMONIO_BASE_USD, RISK_APPETITE_ZONES, calculateRiskAppetite } from '../types';
 import LoadingSpinner from '../components/LoadingSpinner';
+
+const ZONE_BADGE_COLOR: Record<string, string> = {
+  green: 'bg-green-100 text-green-700 border-green-300',
+  yellow: 'bg-yellow-100 text-yellow-700 border-yellow-300',
+  orange: 'bg-orange-100 text-orange-700 border-orange-300',
+  red: 'bg-red-100 text-red-700 border-red-300',
+};
 
 const DEFAULT_APPETITES: Omit<RiskAppetite, 'id'>[] = [
   { riskCategory: 'FRAUD', metric: 'Fraud Loss Rate', description: 'Porcentaje del volumen mensual afectado por fraude', targetValue: 0.3, warningValue: 0.5, criticalValue: 1.0, unit: '%', approvedBy: 'General Counsel', approvalDate: '2024-04-18', reviewDate: '2025-04-18' },
@@ -14,6 +21,7 @@ const DEFAULT_APPETITES: Omit<RiskAppetite, 'id'>[] = [
 export default function RiskAppetitePage() {
   const [appetites, setAppetites] = useState<RiskAppetite[]>([]);
   const [kris, setKRIs] = useState<KRI[]>([]);
+  const [corporateRisks, setCorporateRisks] = useState<CorporateRisk[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -24,10 +32,16 @@ export default function RiskAppetitePage() {
   });
 
   const reload = async () => {
-    const [a, k] = await Promise.all([getRiskAppetites(), getKRIs()]);
-    setAppetites(a); setKRIs(k); setLoading(false);
+    const [a, k, cr] = await Promise.all([getRiskAppetites(), getKRIs(), getCorporateRisks()]);
+    setAppetites(a); setKRIs(k); setCorporateRisks(cr); setLoading(false);
   };
   useEffect(() => { reload(); }, []);
+
+  const scoredRisks = corporateRisks.filter(r => r.economicImpact > 0);
+  const zoneCounts = RISK_APPETITE_ZONES.map(z => ({
+    zone: z,
+    count: scoredRisks.filter(r => calculateRiskAppetite(r.economicImpact, r.probability).zone.key === z.key).length,
+  }));
 
   const handleSeedDefaults = async () => {
     setSaving(true);
@@ -66,10 +80,58 @@ export default function RiskAppetitePage() {
         </div>
       </div>
 
+      {/* Marco de Apetito de Riesgo (RAF) — metodología cuantitativa */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+        <div>
+          <h2 className="font-semibold text-gray-800">Marco de Apetito de Riesgo (RAF)</h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Metodología cuantitativa según la política "Apetito de Riesgo — Gestión Integral de Riesgo". Patrimonio Base: <span className="font-semibold text-gray-700">USD {PATRIMONIO_BASE_USD.toLocaleString('es-CL')}</span>.
+            Exposición Esperada = Impacto Económico (USD) × Probabilidad de Ocurrencia (%).
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-gray-500 uppercase tracking-wide">
+              <tr>
+                <th className="text-left px-3 py-2">Zona</th>
+                <th className="text-center px-3 py-2">% Patrimonio</th>
+                <th className="text-center px-3 py-2">Exposición (USD)</th>
+                <th className="text-left px-3 py-2">Tratamiento</th>
+                <th className="text-center px-3 py-2">Riesgos Corp.</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {zoneCounts.map(({ zone, count }) => (
+                <tr key={zone.key}>
+                  <td className="px-3 py-2">
+                    <span className={`px-2 py-0.5 rounded-full font-medium border ${ZONE_BADGE_COLOR[zone.color]}`}>{zone.label}</span>
+                    <span className="text-gray-400 ml-2">{zone.zone}</span>
+                  </td>
+                  <td className="px-3 py-2 text-center text-gray-600">
+                    {zone.maxPct === null ? `> ${zone.minPct}%` : `${zone.minPct}% – ${zone.maxPct}%`}
+                  </td>
+                  <td className="px-3 py-2 text-center text-gray-600">
+                    {zone.maxPct === null
+                      ? `> USD ${Math.round(PATRIMONIO_BASE_USD * zone.minPct / 100).toLocaleString('es-CL')}`
+                      : `USD ${Math.round(PATRIMONIO_BASE_USD * zone.minPct / 100).toLocaleString('es-CL')} – ${Math.round(PATRIMONIO_BASE_USD * zone.maxPct / 100).toLocaleString('es-CL')}`}
+                  </td>
+                  <td className="px-3 py-2 text-gray-600">{zone.treatment}</td>
+                  <td className="px-3 py-2 text-center font-semibold text-gray-700">{count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {scoredRisks.length === 0 && (
+          <p className="text-xs text-gray-400 italic">Aún no hay riesgos corporativos con Impacto Económico cargado — el perfil consolidado se completará a medida que se ingresen.</p>
+        )}
+      </div>
+
       {/* Info box */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-        <p className="font-semibold">¿Qué es el Risk Appetite?</p>
-        <p className="text-xs mt-1">Define la cantidad y tipo de riesgo que Global81 está dispuesta a asumir en la búsqueda de sus objetivos. Los valores aprobados aquí se comparan automáticamente con los KRIs registrados.</p>
+        <p className="font-semibold">¿Qué es esto?</p>
+        <p className="text-xs mt-1">Además del marco cuantitativo de arriba, el comité puede definir niveles de apetito operacionales por KRI (indicador clave de riesgo). Los valores aprobados aquí se comparan automáticamente con los KRIs registrados.</p>
       </div>
 
       {/* Form */}

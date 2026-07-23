@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react';
 import { getCorporateRisks, createCorporateRisk, updateCorporateRisk, deleteCorporateRisk } from '../services/firestore';
-import { CorporateRisk, CorporateRiskCategory, CORPORATE_RISK_CATEGORY_LABELS, AppetiteLevel, APPETITE_LABELS, riskLevelFromScore, RISK_LEVEL_LABELS, COMPANIES } from '../types';
+import { CorporateRisk, CorporateRiskCategory, CORPORATE_RISK_CATEGORY_LABELS, calculateRiskAppetite, PROBABILITY_PCT, riskLevelFromScore, RISK_LEVEL_LABELS, COMPANIES } from '../types';
 import RiskBadge from '../components/RiskBadge';
 import LoadingSpinner from '../components/LoadingSpinner';
+
+const ZONE_BADGE_COLOR: Record<string, string> = {
+  green: 'bg-green-100 text-green-700',
+  yellow: 'bg-yellow-100 text-yellow-700',
+  orange: 'bg-orange-100 text-orange-700',
+  red: 'bg-red-100 text-red-700',
+};
 
 const STATUS_COLOR: Record<CorporateRisk['status'], string> = {
   Open: 'bg-red-100 text-red-700', Mitigating: 'bg-yellow-100 text-yellow-700',
@@ -15,7 +22,7 @@ const BUSINESS_UNITS = ['Compliance', 'Riesgos', 'Fraude', 'Ciberseguridad', 'Le
 const emptyForm = (): Omit<CorporateRisk, 'id' | 'createdAt' | 'updatedAt'> => ({
   title: '', description: '', category: 'OPERATIONAL', owner: '', businessUnit: '',
   impact: 3, probability: 3, inherentRisk: 9, residualRisk: 0,
-  appetiteLevel: 'Cautious', status: 'Open',
+  economicImpact: 0, status: 'Open',
   relatedProducts: [], relatedControls: [], relatedIncidents: [],
 });
 
@@ -48,7 +55,7 @@ export default function CorporateRisksPage() {
   const handleEdit = (r: CorporateRisk) => {
     setForm({ title: r.title, description: r.description, category: r.category, owner: r.owner,
       businessUnit: r.businessUnit, impact: r.impact, probability: r.probability,
-      inherentRisk: r.inherentRisk, residualRisk: r.residualRisk, appetiteLevel: r.appetiteLevel,
+      inherentRisk: r.inherentRisk, residualRisk: r.residualRisk, economicImpact: r.economicImpact ?? 0,
       status: r.status, relatedProducts: r.relatedProducts, relatedControls: r.relatedControls, relatedIncidents: r.relatedIncidents });
     setEditing(r.id); setShowForm(true);
   };
@@ -69,6 +76,7 @@ export default function CorporateRisksPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Matriz Corporativa de Riesgos</h1>
           <p className="text-gray-500 text-sm mt-1">Riesgos transversales de la organización independientes de productos</p>
+          <p className="text-gray-400 text-xs mt-0.5">La zona de apetito se calcula según el Marco de Apetito de Riesgo (RAF) — ver detalle en la pestaña "Apetito de Riesgo".</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditing(null); setForm(emptyForm()); }}
           className="bg-brand text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-dark">
@@ -132,17 +140,16 @@ export default function CorporateRisksPage() {
               <input value={form.owner} onChange={e => set('owner', e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">Apetito de Riesgo</label>
-              <select value={form.appetiteLevel} onChange={e => set('appetiteLevel', e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand">
-                {(Object.keys(APPETITE_LABELS) as AppetiteLevel[]).map(a => <option key={a} value={a}>{APPETITE_LABELS[a]}</option>)}
-              </select>
+              <label className="text-xs text-gray-500 mb-1 block">Impacto Económico Estimado (USD)</label>
+              <input type="number" min={0} step={1000} value={form.economicImpact} onChange={e => set('economicImpact', Number(e.target.value))}
+                placeholder="Ej: 8000000" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Impacto (1-5): {form.impact}</label>
               <input type="range" min={1} max={5} value={form.impact} onChange={e => set('impact', Number(e.target.value))} className="w-full" />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">Probabilidad (1-5): {form.probability}</label>
+              <label className="text-xs text-gray-500 mb-1 block">Probabilidad de Ocurrencia (1-5 · {(PROBABILITY_PCT[form.probability as 1|2|3|4|5] * 100).toFixed(0)}%)</label>
               <input type="range" min={1} max={5} value={form.probability} onChange={e => set('probability', Number(e.target.value))} className="w-full" />
             </div>
             <div>
@@ -157,6 +164,17 @@ export default function CorporateRisksPage() {
               </select>
             </div>
           </div>
+
+          {form.economicImpact > 0 && (() => {
+            const calc = calculateRiskAppetite(form.economicImpact, form.probability as 1|2|3|4|5);
+            return (
+              <div className={`rounded-lg px-4 py-3 text-xs ${ZONE_BADGE_COLOR[calc.zone.color]}`}>
+                <p className="font-semibold">Exposición Esperada: USD {calc.expectedExposureUSD.toLocaleString('es-CL')} ({calc.pctOfPatrimonio.toFixed(1)}% del patrimonio)</p>
+                <p>Zona: {calc.zone.label} — {calc.zone.zone} · {calc.zone.treatment}</p>
+              </div>
+            );
+          })()}
+
           <div className="flex gap-2 justify-end">
             <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="text-sm text-gray-500 px-3 py-1.5">Cancelar</button>
             <button type="submit" disabled={saving} className="bg-brand text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50">
@@ -203,7 +221,14 @@ export default function CorporateRisksPage() {
                   {r.residualRisk > 0 ? <RiskBadge level={riskLevelFromScore(r.residualRisk)} /> : <span className="text-xs text-gray-300">—</span>}
                 </td>
                 <td className="px-4 py-3 text-center">
-                  <span className="text-xs text-gray-500">{APPETITE_LABELS[r.appetiteLevel]}</span>
+                  {r.economicImpact > 0 ? (() => {
+                    const calc = calculateRiskAppetite(r.economicImpact, r.probability);
+                    return (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ZONE_BADGE_COLOR[calc.zone.color]}`} title={`USD ${calc.expectedExposureUSD.toLocaleString('es-CL')} (${calc.pctOfPatrimonio.toFixed(1)}% patrimonio) · ${calc.zone.treatment}`}>
+                        {calc.zone.label}
+                      </span>
+                    );
+                  })() : <span className="text-xs text-gray-300">—</span>}
                 </td>
                 <td className="px-4 py-3 text-center">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[r.status]}`}>{r.status}</span>
