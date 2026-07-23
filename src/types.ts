@@ -362,10 +362,50 @@ export const CORPORATE_RISK_CATEGORY_LABELS: Record<CorporateRiskCategory, strin
   STRATEGIC: 'Estratégico', BUSINESS_CONTINUITY: 'Continuidad del Negocio',
 };
 
-export type AppetiteLevel = 'Averse' | 'Minimal' | 'Cautious' | 'Open' | 'Hungry';
-export const APPETITE_LABELS: Record<AppetiteLevel, string> = {
-  Averse: 'Cero tolerancia', Minimal: 'Mínimo', Cautious: 'Cauteloso',
-  Open: 'Abierto', Hungry: 'Agresivo',
+// ─── Marco de Apetito de Riesgo (RAF) ────────────────────────────────────────
+// Metodología cuantitativa según "Apetito de Riesgo — Gestión Integral de
+// Riesgo" (v1.0): Exposición Esperada = Impacto Económico (USD) × Probabilidad
+// de Ocurrencia (%). La zona resultante se determina por el % que esa
+// exposición representa sobre el Patrimonio Base. Montos y tratamientos según
+// la sección 6 del documento (matemáticamente consistente con el patrimonio
+// declarado; la sección 4.4 del mismo documento tiene un descuadre de 10x y
+// no se usa).
+export const PATRIMONIO_BASE_USD = 22_000_000;
+
+export type RiskAppetiteZoneKey = 'bajo' | 'moderado' | 'alto' | 'extremo';
+
+export interface RiskAppetiteZoneDef {
+  key: RiskAppetiteZoneKey;
+  label: string;
+  zone: string;
+  minPct: number;
+  maxPct: number | null;
+  treatment: string;
+  color: string;
+}
+
+export const RISK_APPETITE_ZONES: RiskAppetiteZoneDef[] = [
+  { key: 'bajo', label: 'Bajo', zone: 'Dentro del Apetito', minPct: 0, maxPct: 30, treatment: 'Gestión ordinaria — Dueño de Proceso', color: 'green' },
+  { key: 'moderado', label: 'Moderado', zone: 'Tolerancia', minPct: 30, maxPct: 50, treatment: 'Monitoreo reforzado — Dueño de Proceso y Gerencia de Riesgos', color: 'yellow' },
+  { key: 'alto', label: 'Alto', zone: 'Riesgo Alto', minPct: 50, maxPct: 80, treatment: 'Plan de mitigación obligatorio — Escalar a Comité', color: 'orange' },
+  { key: 'extremo', label: 'Extremo', zone: 'Fuera del Apetito', minPct: 80, maxPct: null, treatment: 'Escalamiento a Junta Directiva', color: 'red' },
+];
+
+// Escala de probabilidad (sección 4.3 del RAF): nivel 1-5 -> % de ocurrencia
+export const PROBABILITY_PCT: Record<1 | 2 | 3 | 4 | 5, number> = { 1: 0.20, 2: 0.40, 3: 0.60, 4: 0.80, 5: 1.00 };
+
+export interface RiskAppetiteCalculation {
+  expectedExposureUSD: number;
+  pctOfPatrimonio: number;
+  zone: RiskAppetiteZoneDef;
+}
+
+export const calculateRiskAppetite = (economicImpactUSD: number, probability: 1 | 2 | 3 | 4 | 5): RiskAppetiteCalculation => {
+  const expectedExposureUSD = economicImpactUSD * PROBABILITY_PCT[probability];
+  const pctOfPatrimonio = (expectedExposureUSD / PATRIMONIO_BASE_USD) * 100;
+  const zone = RISK_APPETITE_ZONES.find(z => pctOfPatrimonio >= z.minPct && (z.maxPct === null || pctOfPatrimonio <= z.maxPct))
+    ?? RISK_APPETITE_ZONES[RISK_APPETITE_ZONES.length - 1];
+  return { expectedExposureUSD, pctOfPatrimonio, zone };
 };
 
 export interface CorporateRisk {
@@ -379,7 +419,7 @@ export interface CorporateRisk {
   probability: 1 | 2 | 3 | 4 | 5;
   inherentRisk: number;
   residualRisk: number;
-  appetiteLevel: AppetiteLevel;
+  economicImpact: number;
   status: 'Open' | 'Mitigating' | 'Accepted' | 'Closed';
   relatedProducts: string[];
   relatedControls: string[];
