@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getAllRisks, getProducts } from '../services/firestore';
 import { Risk, Product, RiskLevel, RISK_LEVEL_LABELS } from '../types';
+import { downloadRisksExcel } from '../services/excelService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import RiskBadge from '../components/RiskBadge';
 import RiskDetailModal from '../components/RiskDetailModal';
@@ -34,9 +35,19 @@ export default function RisksPage() {
 
   return (
     <div className="p-6 space-y-5 max-w-6xl">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Matriz de Riesgos</h1>
-        <p className="text-gray-500 text-sm mt-1">{risks.length} riesgos consolidados en todos los productos</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Matriz de Riesgos</h1>
+          <p className="text-gray-500 text-sm mt-1">{risks.length} riesgos consolidados en todos los productos</p>
+        </div>
+        {filtered.length > 0 && (
+          <button
+            onClick={() => downloadRisksExcel(filtered, 'Riesgos_Comite_Producto_G66.xlsx', pid => productMap[pid] ?? pid)}
+            className="border border-gray-200 text-gray-600 px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-50 shrink-0"
+          >
+            📥 Descargar Excel {(filterLevel !== 'all' || filterCategory !== 'all' || search) ? '(filtrado)' : ''}
+          </button>
+        )}
       </div>
 
       {/* Summary */}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getProduct, getRisks, getCommitteeSessions, getRedFlags, getProductLinks, createProductLink, deleteProductLink, updateProduct, createRisk, updateRisk, deleteRisk } from '../services/firestore';
 import { analyzeProductRisks, suggestMitigations, analyzeCountryScope } from '../services/geminiService';
+import { downloadRisksExcel } from '../services/excelService';
 import { Product, Risk, CommitteeSession, RedFlag, ProductLink, ProductPlanning, PRINCIPLES, RISK_CATEGORIES, RISK_LEVEL_LABELS, STATUS_LABELS, GATE_LABELS, RoamState, riskLevelFromScore } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -428,16 +429,26 @@ export default function ProductDetailPage() {
 
       {tab === 'risks' && (
         <div className="space-y-4">
-          {canEdit && (
-            <div className="flex gap-2 justify-end">
-              <button onClick={handleAIAnalysis} disabled={aiLoading} className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-purple-700 disabled:opacity-50">
-                {aiLoading ? '⟳ Analizando...' : '✦ Sugerir con IA'}
+          <div className="flex gap-2 justify-end">
+            {risks.length > 0 && (
+              <button
+                onClick={() => downloadRisksExcel(risks, `Riesgos_${product.name.replace(/[^a-zA-Z0-9]+/g, '_')}.xlsx`, () => product.name)}
+                className="border border-gray-200 text-gray-600 px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-50"
+              >
+                📥 Descargar Excel
               </button>
-              <button onClick={() => setShowRiskForm(!showRiskForm)} className="bg-brand text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-brand-dark">
-                + Agregar Riesgo
-              </button>
-            </div>
-          )}
+            )}
+            {canEdit && (
+              <>
+                <button onClick={handleAIAnalysis} disabled={aiLoading} className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-purple-700 disabled:opacity-50">
+                  {aiLoading ? '⟳ Analizando...' : '✦ Sugerir con IA'}
+                </button>
+                <button onClick={() => setShowRiskForm(!showRiskForm)} className="bg-brand text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-brand-dark">
+                  + Agregar Riesgo
+                </button>
+              </>
+            )}
+          </div>
 
           {showRiskForm && (
             <form onSubmit={handleAddRisk} className="bg-white rounded-xl border border-brand shadow-sm p-5 space-y-3">
