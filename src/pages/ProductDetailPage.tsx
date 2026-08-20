@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { getProduct, getRisks, getCommitteeSessions, getRedFlags, getProductLinks, createProductLink, deleteProductLink, updateProduct, createRisk, updateRisk, deleteRisk } from '../services/firestore';
+import { getProduct, getRisks, getCommitteeSessions, getProductComments, createProductComment, getProductLinks, createProductLink, deleteProductLink, updateProduct, createRisk, updateRisk, deleteRisk } from '../services/firestore';
 import { analyzeProductRisks, suggestMitigations, analyzeCountryScope } from '../services/geminiService';
 import { downloadRisksExcel } from '../services/excelService';
-import { Product, Risk, CommitteeSession, RedFlag, ProductLink, ProductPlanning, PRINCIPLES, RISK_CATEGORIES, RISK_LEVEL_LABELS, STATUS_LABELS, GATE_LABELS, RoamState, riskLevelFromScore } from '../types';
+import { Product, Risk, CommitteeSession, ProductComment, ProductLink, ProductPlanning, RISK_CATEGORIES, RISK_LEVEL_LABELS, STATUS_LABELS, GATE_LABELS, RoamState, riskLevelFromScore } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
 import GateStatusBadge from '../components/GateStatusBadge';
@@ -44,7 +44,9 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [sessions, setSessions] = useState<CommitteeSession[]>([]);
-  const [redFlags, setRedFlags] = useState<RedFlag[]>([]);
+  const [productComments, setProductComments] = useState<ProductComment[]>([]);
+  const [newProductComment, setNewProductComment] = useState('');
+  const [commentBusy, setCommentBusy] = useState(false);
   const [links, setLinks] = useState<ProductLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
@@ -67,11 +69,11 @@ export default function ProductDetailPage() {
 
   const reload = async () => {
     if (!id) return;
-    const [p, r, s, rf, lk] = await Promise.all([getProduct(id), getRisks(id), getCommitteeSessions(id), getRedFlags(id), getProductLinks(id)]);
+    const [p, r, s, pc, lk] = await Promise.all([getProduct(id), getRisks(id), getCommitteeSessions(id), getProductComments(id), getProductLinks(id)]);
     setProduct(p);
     setRisks(r);
     setSessions(s);
-    setRedFlags(rf);
+    setProductComments(pc);
     setLinks(lk);
   };
 
@@ -178,6 +180,23 @@ export default function ProductDetailPage() {
   const handleDeleteLink = async (linkId: string) => {
     await deleteProductLink(linkId);
     await reload();
+  };
+
+  const handleAddProductComment = async () => {
+    if (!product || !newProductComment.trim()) return;
+    setCommentBusy(true);
+    try {
+      await createProductComment({
+        productId: product.id,
+        comment: newProductComment.trim(),
+        authorUid: user?.uid ?? '',
+        authorName: user?.name ?? 'Usuario',
+      });
+      setNewProductComment('');
+      await reload();
+    } finally {
+      setCommentBusy(false);
+    }
   };
 
   const handleSavePlanning = async () => {
@@ -324,7 +343,7 @@ export default function ProductDetailPage() {
                 : t === 'risks' ? `Riesgos (${risks.length})`
                 : t === 'ownership' ? `Responsables Comité`
                 : t === 'sessions' ? `Sesiones (${sessions.length})`
-                : t === 'redflags' ? `Red Flags (${redFlags.filter(r => r.status === 'active').length})`
+                : t === 'redflags' ? `Red Flags (${risks.filter(r => r.isRedFlag).length})`
                 : t === 'links' ? `Enlaces (${links.length})`
                 : t === 'planning' ? 'Planificación'
                 : 'Reporte'}
@@ -350,34 +369,44 @@ export default function ProductDetailPage() {
               <p className="text-sm text-gray-700">{product.publicTarget}</p>
             </div>
           )}
-          {/* Principles */}
+          {/* Comentarios del Producto — log de observaciones fechadas y atribuidas */}
           <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Principios Generales (Gate 1)</h3>
-            <div className="space-y-2">
-              {PRINCIPLES.map((p, i) => {
-                const eval_ = product.principles?.[p];
-                return (
-                  <div key={i} className="flex items-start justify-between gap-4 py-1.5 border-b border-gray-50">
-                    <span className="text-sm text-gray-700">{i + 1}. {p}</span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {canEdit && (
-                        <>
-                          <button onClick={async () => {
-                            await updateProduct(product.id, { principles: { ...product.principles, [p]: { compliant: true, observations: eval_?.observations ?? '' } } });
-                            await reload();
-                          }} className={`text-xs px-2 py-0.5 rounded ${eval_?.compliant === true ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-green-100'}`}>Sí</button>
-                          <button onClick={async () => {
-                            await updateProduct(product.id, { principles: { ...product.principles, [p]: { compliant: false, observations: eval_?.observations ?? '' } } });
-                            await reload();
-                          }} className={`text-xs px-2 py-0.5 rounded ${eval_?.compliant === false ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-red-100'}`}>No</button>
-                        </>
-                      )}
-                      {eval_?.compliant === undefined && <span className="text-xs text-gray-400">—</span>}
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Comentarios del Producto</h3>
+            {canEdit && (
+              <div className="bg-gray-50 rounded-xl p-4 space-y-2 mb-3">
+                <textarea
+                  rows={2}
+                  value={newProductComment}
+                  onChange={e => setNewProductComment(e.target.value)}
+                  placeholder="Agrega una observación sobre este producto..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none bg-white"
+                />
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleAddProductComment}
+                    disabled={commentBusy || !newProductComment.trim()}
+                    className="bg-brand text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-brand-dark disabled:opacity-40"
+                  >
+                    {commentBusy ? '...' : 'Agregar Comentario'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {productComments.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">No hay comentarios aún.</p>
+            ) : (
+              <div className="space-y-2">
+                {productComments.map(c => (
+                  <div key={c.id} className="bg-white border border-gray-100 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-800">{c.authorName}</span>
+                      <span className="text-xs text-gray-400">{new Date(c.createdAt).toLocaleString('es-CL')}</span>
                     </div>
+                    <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{c.comment}</p>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -510,7 +539,11 @@ export default function ProductDetailPage() {
                   {risks.map(r => (
                     <tr key={r.id} onClick={() => setSelectedRisk(r)} className={`cursor-pointer hover:bg-blue-50 ${r.isRedFlag ? 'bg-red-50' : ''}`}>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-gray-800">{r.title}</div>
+                        <div className="font-medium text-gray-800 flex items-center gap-1.5">
+                          {r.isRedFlag && <span title="Red Flag">🚩</span>}
+                          {r.riskAccepted && <span title={`Riesgo asumido por ${r.riskAcceptedByName ?? '—'}`}>✅</span>}
+                          {r.title}
+                        </div>
                         <div className="text-xs text-gray-400 line-clamp-1">{r.description}</div>
                         {r.mitigationPlan && <div className="text-xs text-green-600 mt-0.5 line-clamp-1">✓ {r.mitigationPlan}</div>}
                       </td>
@@ -595,20 +628,27 @@ export default function ProductDetailPage() {
 
       {tab === 'redflags' && (
         <div className="space-y-3">
-          {redFlags.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center text-gray-400 text-sm">No hay Red Flags activas.</div>
+          {risks.filter(r => r.isRedFlag).length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center text-gray-400 text-sm">
+              No hay riesgos marcados como Red Flag. Activa el switch "Red Flag" en el detalle de un riesgo para que aparezca acá.
+            </div>
           ) : (
-            redFlags.map(rf => (
-              <div key={rf.id} className={`bg-white rounded-xl border shadow-sm p-4 ${rf.status === 'active' ? 'border-red-200' : 'border-gray-100 opacity-60'}`}>
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rf.status === 'active' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>{rf.status === 'active' ? 'Activa' : 'Cerrada'}</span>
-                      <span className="text-xs text-gray-400">{rf.area}</span>
+            risks.filter(r => r.isRedFlag).map(rf => (
+              <div key={rf.id} onClick={() => setSelectedRisk(rf)} className="bg-white rounded-xl border border-red-200 shadow-sm p-4 cursor-pointer hover:border-red-400 transition-colors">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">🚩 Red Flag</span>
+                      <RiskBadge level={rf.riskLevel} />
+                      {rf.category && <span className="text-xs text-gray-400">{rf.category}</span>}
                     </div>
-                    <p className="text-sm text-gray-800 font-medium">{rf.description}</p>
-                    <p className="text-xs text-gray-500">Acción correctiva: {rf.correctiveAction}</p>
+                    <p className="text-sm text-gray-800 font-medium">{rf.title}</p>
+                    <p className="text-xs text-gray-500 line-clamp-2">{rf.description}</p>
+                    {rf.mitigationPlan && <p className="text-xs text-green-600 mt-0.5">✓ {rf.mitigationPlan}</p>}
                   </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${rf.roamStatus === 'Resolved' ? 'bg-green-100 text-green-700' : rf.roamStatus === 'Mitigated' ? 'bg-blue-100 text-blue-700' : rf.roamStatus === 'Accepted' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                    {rf.roamStatus}
+                  </span>
                 </div>
               </div>
             ))
@@ -772,7 +812,7 @@ export default function ProductDetailPage() {
                 })}
                 {risks.length === 0 && <span className="text-gray-400">Sin riesgos identificados.</span>}
               </div>
-              <p className="text-xs text-gray-500 mt-1">Red Flags activas: {redFlags.filter(r => r.status === 'active').length}</p>
+              <p className="text-xs text-gray-500 mt-1">Red Flags activas: {risks.filter(r => r.isRedFlag).length}</p>
             </div>
 
             <div>

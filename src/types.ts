@@ -40,7 +40,6 @@ export interface Product {
   createdAt: string;
   updatedAt: string;
   publicTarget?: string;
-  principles?: Record<string, { compliant: boolean; observations: string }>;
   designFlows?: string;
   legalContracts?: string;
   sarlaftSaro?: string;
@@ -48,6 +47,18 @@ export interface Product {
   postSaleMonitoring?: string;
   planning?: ProductPlanning;
   countryScope?: CountryScopeResult;
+}
+
+// Log de observaciones del producto completo (reemplaza a "Principios
+// Generales (Gate 1)"): cualquier miembro deja un comentario, que queda
+// fechado y atribuido a su usuario autenticado.
+export interface ProductComment {
+  id: string;
+  productId: string;
+  comment: string;
+  authorUid: string;
+  authorName: string;
+  createdAt: string;
 }
 
 export interface ProductPlanning {
@@ -95,6 +106,10 @@ export interface Risk {
   owner: string;
   mitigationPlan?: string;
   isRedFlag: boolean;
+  riskAccepted?: boolean;
+  riskAcceptedBy?: string;
+  riskAcceptedByName?: string;
+  riskAcceptedAt?: string;
   observations?: string;
   reviewHistory?: { date: string; author: string; comment: string; }[];
   createdAt: string;

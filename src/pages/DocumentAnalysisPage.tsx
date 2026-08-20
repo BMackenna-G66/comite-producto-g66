@@ -149,9 +149,6 @@ export default function DocumentAnalysisPage() {
         gate2Status: 'pending',
         gate3Status: 'pending',
         publicTarget: '',
-        principles: Object.fromEntries(
-          result.gate1Principles.map(p => [p.principle, { compliant: p.compliant ?? false, observations: p.justification }])
-        ),
       });
       for (const r of result.risks.filter((_, i) => selectedRisks.has(i))) {
         const impact = Math.min(5, Math.max(1, Math.round(r.impact))) as 1|2|3|4|5;

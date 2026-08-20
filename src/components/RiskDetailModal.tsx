@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Risk, RoamState, RISK_CATEGORIES, COMMITTEE_ROLES, riskLevelFromScore, RISK_LEVEL_LABELS } from '../types';
 import { updateRisk } from '../services/firestore';
 import { suggestMitigations } from '../services/geminiService';
+import { useAuth } from '../hooks/useAuth';
 import RiskBadge from './RiskBadge';
 
 interface Props {
@@ -25,6 +26,7 @@ const ROAM_DESC: Record<RoamState, string> = {
 };
 
 export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
+  const { user } = useAuth();
   const [form, setForm] = useState({
     title: risk.title,
     description: risk.description,
@@ -42,6 +44,10 @@ export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
     mitigationPlan: risk.mitigationPlan ?? '',
     isRedFlag: risk.isRedFlag,
     observations: risk.observations ?? '',
+    riskAccepted: risk.riskAccepted ?? false,
+    riskAcceptedBy: risk.riskAcceptedBy,
+    riskAcceptedByName: risk.riskAcceptedByName,
+    riskAcceptedAt: risk.riskAcceptedAt,
   });
 
   const [newComment, setNewComment] = useState('');
@@ -55,6 +61,26 @@ export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
   const level = riskLevelFromScore(score);
 
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+
+  const toggleRiskAccepted = () => {
+    if (!form.riskAccepted) {
+      setForm(f => ({
+        ...f,
+        riskAccepted: true,
+        riskAcceptedBy: user?.uid,
+        riskAcceptedByName: user?.name,
+        riskAcceptedAt: new Date().toISOString(),
+      }));
+    } else {
+      setForm(f => ({
+        ...f,
+        riskAccepted: false,
+        riskAcceptedBy: undefined,
+        riskAcceptedByName: undefined,
+        riskAcceptedAt: undefined,
+      }));
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -201,6 +227,24 @@ export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
                 <button onClick={() => set('isRedFlag', !form.isRedFlag)}
                   className={`relative w-11 h-6 rounded-full transition-colors ${form.isRedFlag ? 'bg-red-500' : 'bg-gray-200'}`}>
                   <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.isRedFlag ? 'translate-x-5' : ''}`} />
+                </button>
+              </div>
+
+              {/* Asumir Riesgo toggle */}
+              <div className="flex items-center justify-between bg-blue-50 rounded-xl px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">✅ Asumir Riesgo</p>
+                  <p className="text-xs text-gray-500">Queda registrado quién definió aceptar este riesgo</p>
+                  {form.riskAccepted && form.riskAcceptedByName && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Aceptado por {form.riskAcceptedByName}
+                      {form.riskAcceptedAt && ` el ${new Date(form.riskAcceptedAt).toLocaleString('es-CL')}`}
+                    </p>
+                  )}
+                </div>
+                <button onClick={toggleRiskAccepted}
+                  className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${form.riskAccepted ? 'bg-blue-500' : 'bg-gray-200'}`}>
+                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.riskAccepted ? 'translate-x-5' : ''}`} />
                 </button>
               </div>
 
