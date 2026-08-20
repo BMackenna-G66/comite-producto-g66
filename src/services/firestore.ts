@@ -3,7 +3,7 @@ import {
   collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Product, Risk, CommitteeSession, RedFlag, ProductLink, Commitment, AppUser, UserRole, Invite, riskLevelFromScore } from '../types';
+import { Product, Risk, CommitteeSession, ProductLink, ProductComment, Commitment, AppUser, UserRole, Invite, riskLevelFromScore } from '../types';
 
 const now = () => new Date().toISOString();
 
@@ -103,15 +103,13 @@ export const updateRisk = async (id: string, data: Partial<Risk>) => {
 
 export const deleteRisk = async (id: string) => remove('risks', id);
 
-// ─── RED FLAGS ───────────────────────────────────────────────────────────────
-export const getRedFlags = async (productId: string): Promise<RedFlag[]> =>
-  listWhere<RedFlag>('redflags', 'productId', productId);
+// ─── PRODUCT COMMENTS ────────────────────────────────────────────────────────
+export const getProductComments = async (productId: string): Promise<ProductComment[]> =>
+  (await listWhere<ProductComment>('productComments', 'productId', productId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-export const createRedFlag = async (data: Omit<RedFlag, 'id' | 'createdAt'>): Promise<string> =>
-  insert('redflags', { ...data, createdAt: now() });
-
-export const resolveRedFlag = async (id: string) =>
-  patch('redflags', id, { status: 'closed', closedAt: now() });
+export const createProductComment = async (data: Omit<ProductComment, 'id' | 'createdAt'>): Promise<string> =>
+  insert('productComments', { ...data, createdAt: now() });
 
 // ─── PRODUCT LINKS ───────────────────────────────────────────────────────────
 export const getProductLinks = async (productId: string): Promise<ProductLink[]> =>
