@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getAllRisks, getProducts } from '../services/firestore';
 import { Risk, Product } from '../types';
@@ -19,18 +19,34 @@ interface CategoryGroup {
 const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 // Layout tipo "mapa mental": raíz -> categorías -> productos, con curvas conectoras.
+// El ancho se mide del contenedor real (ResizeObserver) para que el árbol ocupe
+// todo el espacio disponible en pantalla en vez de quedar acotado a un ancho fijo.
 function MindMap({ groups, onProductClick }: { groups: CategoryGroup[]; onProductClick: (product: Product) => void }) {
-  const NODE_H = 60;
-  const CAT_GAP = 26;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(900);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setContainerWidth(w);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const NODE_H = 64;
+  const CAT_GAP = 28;
   const PAD = 24;
-  const ROOT_X = 70;
-  const CAT_X = 380;
-  const PROD_X = 760;
+  const ROOT_X = 80;
+  const PROD_X = Math.max(680, containerWidth - 150);
+  const CAT_X = ROOT_X + (PROD_X - ROOT_X) * 0.42;
 
   const blocks = groups.map(g => ({ group: g, height: Math.max(1, g.products.length) * NODE_H }));
   const innerHeight = blocks.reduce((sum, b) => sum + b.height, 0) + CAT_GAP * Math.max(0, blocks.length - 1);
   const height = innerHeight + PAD * 2;
-  const width = PROD_X + 130;
+  const width = Math.max(containerWidth, PROD_X + 150);
   const rootY = height / 2;
 
   let cursor = PAD;
@@ -47,7 +63,7 @@ function MindMap({ groups, onProductClick }: { groups: CategoryGroup[]; onProduc
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-auto" style={{ maxHeight: '70vh' }}>
+    <div ref={containerRef} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-auto" style={{ maxHeight: '80vh' }}>
       <svg width={width} height={Math.max(height, 200)} className="block">
         {/* Raíz */}
         <rect x={ROOT_X - 55} y={rootY - 25} width={110} height={50} rx={12} className="fill-navy-900" />
@@ -136,7 +152,7 @@ export default function ProductRelationsPage() {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="p-6 space-y-5 max-w-4xl">
+    <div className={`p-6 space-y-5 ${view === 'mapa' ? 'max-w-none' : 'max-w-4xl'}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Árbol de Relaciones entre Productos</h1>
