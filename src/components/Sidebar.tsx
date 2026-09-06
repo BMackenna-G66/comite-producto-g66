@@ -16,6 +16,7 @@ const NAV_SECTIONS = [
     label: 'Risk Management',
     items: [
       { to: '/risks', label: 'Riesgos Productos', icon: '⚠' },
+      { to: '/product-relations', label: 'Árbol de Relaciones', icon: '🌳' },
       { to: '/corporate-risks', label: 'Riesgos Corporativos', icon: '🏛' },
       { to: '/kris', label: 'KRIs', icon: '📊' },
       { to: '/appetite', label: 'Apetito de Riesgo', icon: '⚖' },
