@@ -127,7 +127,7 @@ export default function ProductDetailPage() {
     try {
       const mit = await suggestMitigations(risk.title, risk.description, risk.category);
       await updateRisk(risk.id, { mitigationPlan: mit });
-      await reload();
+      setRisks(prev => prev.map(r => (r.id === risk.id ? { ...r, mitigationPlan: mit } : r)));
     } finally {
       setMitLoading(null);
     }
@@ -137,18 +137,20 @@ export default function ProductDetailPage() {
     e.preventDefault();
     if (!product) return;
     const score = riskForm.impact * riskForm.probability;
-    await createRisk({
+    const now = new Date().toISOString();
+    const data = {
       productId: product.id,
       ...riskForm,
       impact: riskForm.impact as Risk['impact'],
       probability: riskForm.probability as Risk['probability'],
       inherentRisk: score,
       riskLevel: riskLevelFromScore(score),
-      roamStatus: 'Owned',
-    });
+      roamStatus: 'Owned' as RoamState,
+    };
+    const id = await createRisk(data);
+    setRisks(prev => [...prev, { ...data, id, createdAt: now, updatedAt: now }]);
     setShowRiskForm(false);
     setRiskForm({ title: '', description: '', category: '', macroprocess: '', process: '', impact: 3, probability: 3, owner: '', isRedFlag: false });
-    await reload();
   };
 
   const normalizeUrl = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
@@ -162,16 +164,17 @@ export default function ProductDetailPage() {
     setLinkError('');
     setLinkBusy(true);
     try {
-      await createProductLink({
+      const data = {
         productId: product.id,
         title,
         url: normalizeUrl(url),
         addedBy: user?.uid ?? '',
         addedByName: user?.name ?? 'Desconocido',
-      });
+      };
+      const id = await createProductLink(data);
+      setLinks(prev => [{ ...data, id, createdAt: new Date().toISOString() }, ...prev]);
       setLinkForm({ title: '', url: '' });
       setShowLinkForm(false);
-      await reload();
     } finally {
       setLinkBusy(false);
     }
@@ -179,21 +182,22 @@ export default function ProductDetailPage() {
 
   const handleDeleteLink = async (linkId: string) => {
     await deleteProductLink(linkId);
-    await reload();
+    setLinks(prev => prev.filter(l => l.id !== linkId));
   };
 
   const handleAddProductComment = async () => {
     if (!product || !newProductComment.trim()) return;
     setCommentBusy(true);
     try {
-      await createProductComment({
+      const data = {
         productId: product.id,
         comment: newProductComment.trim(),
         authorUid: user?.uid ?? '',
         authorName: user?.name ?? 'Usuario',
-      });
+      };
+      const id = await createProductComment(data);
+      setProductComments(prev => [{ ...data, id, createdAt: new Date().toISOString() }, ...prev]);
       setNewProductComment('');
-      await reload();
     } finally {
       setCommentBusy(false);
     }
@@ -209,9 +213,9 @@ export default function ProductDetailPage() {
         if (v) cleaned[f.key] = f.kind === 'url' ? normalizeUrl(v) : v;
       }
       await updateProduct(product.id, { planning: cleaned });
+      setProduct(prev => (prev ? { ...prev, planning: cleaned } : prev));
       setPlanningSaved(true);
       setTimeout(() => setPlanningSaved(false), 2000);
-      await reload();
     } finally {
       setPlanningSaving(false);
     }
@@ -223,7 +227,7 @@ export default function ProductDetailPage() {
     try {
       const result = await analyzeCountryScope(product.name, product.description, product.businessCase, product.companies);
       await updateProduct(product.id, { countryScope: result });
-      await reload();
+      setProduct(prev => (prev ? { ...prev, countryScope: result } : prev));
     } finally {
       setCountryScopeLoading(false);
     }
@@ -231,7 +235,7 @@ export default function ProductDetailPage() {
 
   const handleRoamUpdate = async (riskId: string, status: RoamState) => {
     await updateRisk(riskId, { roamStatus: status });
-    await reload();
+    setRisks(prev => prev.map(r => (r.id === riskId ? { ...r, roamStatus: status } : r)));
   };
 
   const handleAdvanceGate = async () => {
@@ -242,7 +246,7 @@ export default function ProductDetailPage() {
     else if (product.currentGate === 2) { updates.gate2Status = 'approved'; updates.gate3Status = 'in_progress'; updates.status = 'gate3'; }
     else { updates.gate3Status = 'approved'; updates.status = 'approved'; }
     await updateProduct(product.id, updates);
-    await reload();
+    setProduct(prev => (prev ? { ...prev, ...updates } : prev));
   };
 
   if (loading) return <LoadingSpinner />;
@@ -576,7 +580,7 @@ export default function ProductDetailPage() {
                             >
                               {mitLoading === r.id ? '⟳' : '✦'}
                             </button>
-                            <button onClick={async () => { await deleteRisk(r.id); await reload(); }} className="text-xs text-red-400 hover:text-red-600 ml-1">✕</button>
+                            <button onClick={async () => { await deleteRisk(r.id); setRisks(prev => prev.filter(x => x.id !== r.id)); }} className="text-xs text-red-400 hover:text-red-600 ml-1">✕</button>
                           </div>
                         )}
                       </td>
