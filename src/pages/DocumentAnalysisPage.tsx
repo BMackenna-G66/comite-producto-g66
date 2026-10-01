@@ -1,20 +1,13 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { analyzeDocument, analyzeDocumentPDF, DocumentAnalysisResult } from '../services/geminiService';
+import { analyzeDocument, analyzeDocumentPDF, answerRequirements, AIRequirementAnswer, DocumentAnalysisResult } from '../services/geminiService';
 import { createProduct, createRisk } from '../services/firestore';
+import { LoadedFile, loadScopeDocument, toScopeInput, ScopeDocInput } from '../services/scopeDocument';
+import { REQUIREMENT_AREAS, areaQuestions, mergeAIAnswers } from '../requirementsCatalog';
 import { RISK_LEVEL_LABELS, RiskLevel, riskLevelFromScore } from '../types';
 
 type Step = 'input' | 'analyzing' | 'result';
 type FileMode = 'text' | 'file';
-
-interface LoadedFile {
-  name: string;
-  type: 'pdf' | 'docx' | 'text';
-  // For PDF: base64 string. For others: extracted text.
-  content: string;
-  isPdf: boolean;
-  sizeLabel: string;
-}
 
 const RISK_COLORS: Record<RiskLevel, string> = {
   muy_alto: 'border-red-300 bg-red-50',
@@ -28,31 +21,6 @@ const RISK_TEXT: Record<RiskLevel, string> = {
   bajo: 'text-blue-700', muy_bajo: 'text-green-700',
 };
 
-const sizeLabel = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const fileToBase64 = (file: File): Promise<string> =>
-  new Promise((res, rej) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // strip "data:application/pdf;base64," prefix
-      res(result.split(',')[1]);
-    };
-    reader.onerror = rej;
-    reader.readAsDataURL(file);
-  });
-
-const extractDocxText = async (file: File): Promise<string> => {
-  const mammoth = await import('mammoth');
-  const arrayBuffer = await file.arrayBuffer();
-  const result = await mammoth.extractRawText({ arrayBuffer });
-  return result.value;
-};
-
 export default function DocumentAnalysisPage() {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,6 +32,7 @@ export default function DocumentAnalysisPage() {
   const [fileLoading, setFileLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<DocumentAnalysisResult | null>(null);
+  const [reqAnswers, setReqAnswers] = useState<AIRequirementAnswer[] | null>(null);
 
   const [selectedRisks, setSelectedRisks] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
@@ -75,23 +44,7 @@ export default function DocumentAnalysisPage() {
     setFileLoading(true);
     setError('');
     try {
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-      const size = sizeLabel(file.size);
-
-      if (ext === 'pdf') {
-        if (file.size > 20 * 1024 * 1024) throw new Error('El PDF supera el límite de 20 MB.');
-        const b64 = await fileToBase64(file);
-        setLoadedFile({ name: file.name, type: 'pdf', content: b64, isPdf: true, sizeLabel: size });
-      } else if (ext === 'docx') {
-        const text = await extractDocxText(file);
-        if (!text.trim()) throw new Error('No se pudo extraer texto del archivo .docx');
-        setLoadedFile({ name: file.name, type: 'docx', content: text, isPdf: false, sizeLabel: size });
-      } else if (['txt', 'md', 'csv'].includes(ext)) {
-        const text = await file.text();
-        setLoadedFile({ name: file.name, type: 'text', content: text, isPdf: false, sizeLabel: size });
-      } else {
-        throw new Error(`Formato no soportado: .${ext}. Usa PDF, DOCX, TXT o MD.`);
-      }
+      setLoadedFile(await loadScopeDocument(file));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al cargar archivo');
     } finally {
@@ -116,14 +69,16 @@ export default function DocumentAnalysisPage() {
 
     setStep('analyzing');
     try {
-      let res: DocumentAnalysisResult;
-      if (mode === 'file' && loadedFile?.isPdf) {
-        res = await analyzeDocumentPDF(loadedFile.content);
-      } else {
-        const text = mode === 'file' ? loadedFile!.content : pastedText;
-        res = await analyzeDocument(text);
-      }
+      const input: ScopeDocInput = mode === 'file' ? toScopeInput(loadedFile!) : { kind: 'text', text: pastedText };
+      // El cuestionario del comité corre en paralelo y no bloquea el análisis de
+      // riesgos: si falla, el producto se importa igual y se responde después
+      // con "Reanalizar" desde la pestaña Requerimientos.
+      const [res, req] = await Promise.all([
+        input.kind === 'pdf' ? analyzeDocumentPDF(input.base64) : analyzeDocument(input.text),
+        answerRequirements(input).catch(() => null),
+      ]);
       setResult(res);
+      setReqAnswers(req);
       setSelectedRisks(new Set(res.risks.map((_, i) => i)));
       setStep('result');
     } catch (e: unknown) {
@@ -149,6 +104,11 @@ export default function DocumentAnalysisPage() {
         gate2Status: 'pending',
         gate3Status: 'pending',
         publicTarget: '',
+        ...(reqAnswers && reqAnswers.length > 0 && {
+          requirements: mergeAIAnswers(reqAnswers),
+          requirementsAnalyzedAt: new Date().toISOString(),
+          requirementsSourceDoc: mode === 'file' && loadedFile ? loadedFile.name : 'Texto pegado',
+        }),
       });
       for (const r of result.risks.filter((_, i) => selectedRisks.has(i))) {
         const impact = Math.min(5, Math.max(1, Math.round(r.impact))) as 1|2|3|4|5;
@@ -170,7 +130,7 @@ export default function DocumentAnalysisPage() {
   };
 
   const reset = () => {
-    setStep('input'); setResult(null); setLoadedFile(null);
+    setStep('input'); setResult(null); setReqAnswers(null); setLoadedFile(null);
     setPastedText(''); setError(''); setImported(false); setSelectedRisks(new Set());
   };
 
@@ -388,6 +348,26 @@ export default function DocumentAnalysisPage() {
                     </div>
                   ))}
                 </div>
+              </InfoCard>
+
+              <InfoCard title="Requerimientos del Comité">
+                {reqAnswers ? (
+                  <div className="space-y-1">
+                    {REQUIREMENT_AREAS.map(a => {
+                      const ids = new Set(areaQuestions(a).map(q => q.id));
+                      const done = reqAnswers.filter(r => ids.has(r.id) && r.answer).length;
+                      return (
+                        <div key={a.id} className="flex items-center justify-between text-xs">
+                          <span className="text-gray-700">{a.label}</span>
+                          <span className="text-gray-500">{done} / {ids.size} respondidas</span>
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs text-gray-400 pt-1">Se guardan al importar; revísalas en la pestaña Requerimientos del producto.</p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-700">No se pudo responder el cuestionario. Podrás hacerlo después con "Reanalizar" en la pestaña Requerimientos.</p>
+                )}
               </InfoCard>
             </div>
 

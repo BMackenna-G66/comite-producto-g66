@@ -1,5 +1,7 @@
 import { GoogleGenAI, Type, Part } from '@google/genai';
 import { Risk, RiskLevel, AIRiskAnalysis, CountryScopeResult } from '../types';
+import { REQUIREMENT_AREAS, ALL_REQUIREMENT_QUESTIONS, ANSWER_OPTIONS, RequirementQuestion } from '../requirementsCatalog';
+import { ScopeDocInput } from './scopeDocument';
 
 export type { AIRiskAnalysis };
 
@@ -178,6 +180,87 @@ Genera además una advertencia (campo "warning") en español, de máximo 3 frase
   });
   const parsed = JSON.parse(response.text ?? '{}');
   return { ...parsed, analyzedAt: new Date().toISOString() } as CountryScopeResult;
+};
+
+// ─── Requerimientos del comité (catálogo del Excel) ──────────────────────────
+export interface AIRequirementAnswer {
+  id: string;
+  answer: string;
+  detail: string;
+}
+
+const describeType = (q: RequirementQuestion) =>
+  q.type === 'texto' ? 'texto libre' : `una de: ${ANSWER_OPTIONS[q.type].join(' | ')}`;
+
+// Responde cada pregunta del catálogo a partir del documento de alcance. Solo
+// devuelve ids conocidos y normaliza las opciones; una pregunta que el
+// documento no permite responder vuelve con answer vacío y el motivo en detail.
+export const answerRequirements = async (
+  doc: ScopeDocInput, productContext?: { name: string; description: string },
+): Promise<AIRequirementAnswer[]> => {
+  const ai = getAI();
+  const catalog = REQUIREMENT_AREAS.map(area =>
+    `## ${area.label}\n` + area.sections.map(s =>
+      `### ${s.title}${s.note ? ` (${s.note})` : ''}\n` + s.questions.map(q =>
+        `- id: ${q.id} | pregunta: ${q.question} | respuesta: ${describeType(q)}${q.hint ? ` | contexto: ${q.hint}` : ''}`,
+      ).join('\n'),
+    ).join('\n'),
+  ).join('\n\n');
+
+  const instructions = `Eres analista del Comité de Producto de Global66 (fintech de remesas que opera con Global81 SpA en Chile, GlobalCard S.A. y Sedpe en Colombia, y Arpagos en Argentina).
+${productContext ? `\nProducto: ${productContext.name} — ${productContext.description}\n` : ''}
+Responde TODAS las preguntas del siguiente cuestionario usando únicamente lo que dice el documento de alcance adjunto. Reglas:
+- Devuelve una entrada por cada id del cuestionario, con el id exacto.
+- "answer": para preguntas de opciones, exactamente una de las opciones indicadas; para texto libre, una respuesta concreta y breve.
+- "detail": la evidencia del documento que sustenta la respuesta (o el país, sociedad o detalle que pide la pregunta), en 1 a 3 frases.
+- Si el documento no permite responder, deja "answer" como string vacío y explica en "detail" qué información falta. No inventes.
+- Usa español.
+
+Cuestionario:
+${catalog}`;
+
+  const contents = doc.kind === 'pdf'
+    ? { role: 'user', parts: [{ text: instructions }, { inlineData: { mimeType: 'application/pdf', data: doc.base64 } }] as Part[] }
+    : `${instructions}\n\nDocumento de alcance:\n\n${doc.text}`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents,
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          answers: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                answer: { type: Type.STRING },
+                detail: { type: Type.STRING },
+              },
+              required: ['id', 'answer', 'detail'],
+            },
+          },
+        },
+        required: ['answers'],
+      },
+    },
+  });
+
+  const parsed = JSON.parse(response.text ?? '{}') as { answers?: AIRequirementAnswer[] };
+  const byId = new Map(ALL_REQUIREMENT_QUESTIONS.map(q => [q.id, q]));
+  return (parsed.answers ?? []).flatMap(a => {
+    const q = byId.get(a.id);
+    if (!q) return [];
+    let answer = (a.answer ?? '').trim();
+    if (q.type !== 'texto') {
+      const normalized = answer.toUpperCase().replace('SÍ', 'SI').replace(/\s+/g, '');
+      answer = ANSWER_OPTIONS[q.type].find(o => o.replace(/\s+/g, '') === normalized) ?? '';
+    }
+    return [{ id: q.id, answer, detail: (a.detail ?? '').trim() }];
+  });
 };
 
 export const suggestMitigations = async (title: string, description: string, category: string): Promise<string> => {

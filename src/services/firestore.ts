@@ -3,7 +3,7 @@ import {
   collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Product, Risk, CommitteeSession, ProductLink, ProductComment, Commitment, AppUser, UserRole, Invite, riskLevelFromScore } from '../types';
+import { Product, Risk, CommitteeSession, ProductLink, ProductComment, Commitment, AppUser, UserRole, Invite, RequirementAnswer, riskLevelFromScore } from '../types';
 
 const now = () => new Date().toISOString();
 
@@ -69,6 +69,19 @@ export const updateProduct = async (id: string, data: Partial<Product>) =>
   patch('products', id, { ...data, updatedAt: now() });
 
 export const deleteProduct = async (id: string) => remove('products', id);
+
+// Escribe cada respuesta por su ruta (requirements.<id>) en vez de reemplazar el
+// mapa completo, para no pisar lo que otro miembro haya editado en paralelo.
+export const updateRequirementAnswers = async (
+  productId: string,
+  answers: Record<string, RequirementAnswer>,
+  extra: Pick<Product, 'requirementsAnalyzedAt' | 'requirementsSourceDoc'> | Record<string, never> = {},
+) =>
+  patch('products', productId, {
+    ...Object.fromEntries(Object.entries(answers).map(([qid, a]) => [`requirements.${qid}`, a])),
+    ...extra,
+    updatedAt: now(),
+  });
 
 // ─── RISKS ───────────────────────────────────────────────────────────────────
 export const getRisks = async (productId: string): Promise<Risk[]> =>

@@ -47,6 +47,22 @@ export interface Product {
   postSaleMonitoring?: string;
   planning?: ProductPlanning;
   countryScope?: CountryScopeResult;
+  // Respuestas a los requerimientos del comité (catálogo en requirementsCatalog.ts),
+  // indexadas por id de pregunta.
+  requirements?: Record<string, RequirementAnswer>;
+  requirementsAnalyzedAt?: string;
+  requirementsSourceDoc?: string;
+}
+
+// Para si_no / in_out, `answer` es la opción elegida y `detail` la evidencia;
+// para texto, `answer` es la respuesta misma. `answer` vacío = sin respuesta.
+// `origin: 'manual'` protege la respuesta de ser pisada por un reanálisis.
+export interface RequirementAnswer {
+  answer: string;
+  detail: string;
+  origin: 'ia' | 'manual';
+  updatedAt: string;
+  updatedByName: string;
 }
 
 // Log de observaciones del producto completo (reemplaza a "Principios
