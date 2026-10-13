@@ -43,6 +43,7 @@ export default function SarlaftTab({ product, operationalRisks, onProductChange 
   const [pastedText, setPastedText] = useState('');
   const [fileLoading, setFileLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [addCode, setAddCode] = useState('');
@@ -81,7 +82,7 @@ export default function SarlaftTab({ product, operationalRisks, onProductChange 
     setAnalyzing(true);
     try {
       const ai = await analyzeSarlaft(input, matrix, { name: product.name, description: product.description },
-        operationalRisks.map(r => ({ id: r.id, title: r.title, category: r.category })));
+        operationalRisks.map(r => ({ id: r.id, title: r.title, category: r.category })), setProgress);
       const output = buildSarlaftAnalysis(ai, matrix, product.id, inputMode === 'file' && file ? file.name : 'Texto pegado', operationalRisks.map(r => r.id));
       const saved = await persistSarlaftAnalysis(product.id, output, risks);
       setRisks(saved);
@@ -96,6 +97,7 @@ export default function SarlaftTab({ product, operationalRisks, onProductChange 
       setError(e instanceof Error ? e.message : 'Error en el análisis SARLAFT');
     } finally {
       setAnalyzing(false);
+      setProgress('');
     }
   };
 
@@ -174,7 +176,7 @@ export default function SarlaftTab({ product, operationalRisks, onProductChange 
               <button onClick={() => setShowAnalysis(false)} className="text-xs text-gray-500 px-3 py-1.5">Cancelar</button>
               <button onClick={handleAnalyze} disabled={analyzing || fileLoading}
                 className="bg-purple-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-purple-700 disabled:opacity-50">
-                {analyzing ? 'Cruzando contra la matriz...' : 'Analizar y cruzar'}
+                {analyzing ? `${progress || 'Cruzando contra la matriz'}...` : 'Analizar y cruzar'}
               </button>
             </div>
           </div>
