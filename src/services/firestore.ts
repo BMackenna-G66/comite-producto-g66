@@ -4,6 +4,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Product, Risk, CommitteeSession, ProductLink, ProductComment, Commitment, AppUser, UserRole, Invite, RequirementAnswer, riskLevelFromScore } from '../types';
+import { SarlaftMatrix, SarlaftProductRisk } from '../sarlaft/types';
 
 const now = () => new Date().toISOString();
 
@@ -115,6 +116,32 @@ export const updateRisk = async (id: string, data: Partial<Risk>) => {
 };
 
 export const deleteRisk = async (id: string) => remove('risks', id);
+
+// ─── SARLAFT ─────────────────────────────────────────────────────────────────
+// Matriz vigente: un único documento, reemplazado en cada importación. Vive en
+// Firestore (no en el código) porque su contenido es confidencial y la app se
+// sirve como sitio público.
+export const getSarlaftMatrix = async (): Promise<SarlaftMatrix | null> => {
+  const m = await getOne<SarlaftMatrix>('sarlaftMatrix', 'vigente');
+  return m ? (({ id: _id, ...rest }) => rest)(m) as SarlaftMatrix : null;
+};
+
+export const saveSarlaftMatrix = async (matrix: SarlaftMatrix) => {
+  await setDoc(doc(db, 'sarlaftMatrix', 'vigente'), matrix);
+};
+
+export const getSarlaftRisks = async (productId: string): Promise<SarlaftProductRisk[]> =>
+  listWhere<SarlaftProductRisk>('sarlaftRisks', 'productId', productId);
+
+export const getAllSarlaftRisks = async (): Promise<SarlaftProductRisk[]> => listAll<SarlaftProductRisk>('sarlaftRisks');
+
+export const createSarlaftRisk = async (data: Omit<SarlaftProductRisk, 'id'>): Promise<string> =>
+  insert('sarlaftRisks', data);
+
+export const updateSarlaftRisk = async (id: string, data: Partial<SarlaftProductRisk>) =>
+  patch('sarlaftRisks', id, { ...data, updatedAt: now() });
+
+export const deleteSarlaftRisk = async (id: string) => remove('sarlaftRisks', id);
 
 // ─── PRODUCT COMMENTS ────────────────────────────────────────────────────────
 export const getProductComments = async (productId: string): Promise<ProductComment[]> =>

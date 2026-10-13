@@ -1,3 +1,5 @@
+import type { SarlaftAnalysisSummary } from './sarlaft/types';
+
 export type UserRole = 'admin' | 'member' | 'observer' | 'pending' | 'rejected';
 export type GateStatus = 'pending' | 'in_progress' | 'approved' | 'rejected' | 'blocked';
 export type ProductStatus = 'draft' | 'gate1' | 'gate2' | 'gate3' | 'approved' | 'rejected';
@@ -52,6 +54,8 @@ export interface Product {
   requirements?: Record<string, RequirementAnswer>;
   requirementsAnalyzedAt?: string;
   requirementsSourceDoc?: string;
+  // Último cruce SARLAFT del producto contra la matriz vigente.
+  sarlaftAnalysis?: SarlaftAnalysisSummary;
 }
 
 // Para si_no / in_out, `answer` es la opción elegida y `detail` la evidencia;
