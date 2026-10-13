@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { analyzeDocument, analyzeDocumentPDF, answerRequirements, AIRequirementAnswer, DocumentAnalysisResult } from '../services/geminiService';
-import { createProduct, createRisk } from '../services/firestore';
+import { analyzeDocument, analyzeDocumentPDF, analyzeSarlaft, answerRequirements, AIRequirementAnswer, DocumentAnalysisResult } from '../services/geminiService';
+import { createProduct, createRisk, getSarlaftMatrix } from '../services/firestore';
+import { buildSarlaftAnalysis, SarlaftAnalysisOutput } from '../sarlaft/analysis';
+import { persistSarlaftAnalysis } from '../sarlaft/persist';
 import { LoadedFile, loadScopeDocument, toScopeInput, ScopeDocInput } from '../services/scopeDocument';
 import { REQUIREMENT_AREAS, areaQuestions, mergeAIAnswers } from '../requirementsCatalog';
 import { RISK_LEVEL_LABELS, RiskLevel, riskLevelFromScore } from '../types';
@@ -33,6 +35,9 @@ export default function DocumentAnalysisPage() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<DocumentAnalysisResult | null>(null);
   const [reqAnswers, setReqAnswers] = useState<AIRequirementAnswer[] | null>(null);
+  const [sarlaft, setSarlaft] = useState<SarlaftAnalysisOutput | null>(null);
+  const [sarlaftStatus, setSarlaftStatus] = useState<'ok' | 'failed' | 'no_matrix'>('ok');
+  const [analyzingLabel, setAnalyzingLabel] = useState('');
 
   const [selectedRisks, setSelectedRisks] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
@@ -73,12 +78,32 @@ export default function DocumentAnalysisPage() {
       // El cuestionario del comité corre en paralelo y no bloquea el análisis de
       // riesgos: si falla, el producto se importa igual y se responde después
       // con "Reanalizar" desde la pestaña Requerimientos.
-      const [res, req] = await Promise.all([
+      setAnalyzingLabel('Analizando riesgos operacionales y requerimientos');
+      const [res, req, matrix] = await Promise.all([
         input.kind === 'pdf' ? analyzeDocumentPDF(input.base64) : analyzeDocument(input.text),
         answerRequirements(input).catch(() => null),
+        getSarlaftMatrix().catch(() => null),
       ]);
+      // El cruce SARLAFT va después porque se relaciona con los riesgos
+      // operacionales recién extraídos (ids temporales op-N). Si falla, el
+      // producto se importa igual y se cruza después desde su pestaña SARLAFT.
+      let sarlaftOut: SarlaftAnalysisOutput | null = null;
+      if (!matrix) {
+        setSarlaftStatus('no_matrix');
+      } else {
+        setAnalyzingLabel(`Cruzando contra la matriz SARLAFT vigente (${matrix.risks.length} riesgos)`);
+        try {
+          const opRisks = res.risks.map((r, i) => ({ id: `op-${i}`, title: r.title, category: r.category }));
+          const ai = await analyzeSarlaft(input, matrix, { name: res.productName, description: res.productDescription }, opRisks);
+          sarlaftOut = buildSarlaftAnalysis(ai, matrix, '', mode === 'file' && loadedFile ? loadedFile.name : 'Texto pegado', opRisks.map(r => r.id));
+          setSarlaftStatus('ok');
+        } catch {
+          setSarlaftStatus('failed');
+        }
+      }
       setResult(res);
       setReqAnswers(req);
+      setSarlaft(sarlaftOut);
       setSelectedRisks(new Set(res.risks.map((_, i) => i)));
       setStep('result');
     } catch (e: unknown) {
@@ -110,10 +135,12 @@ export default function DocumentAnalysisPage() {
           requirementsSourceDoc: mode === 'file' && loadedFile ? loadedFile.name : 'Texto pegado',
         }),
       });
-      for (const r of result.risks.filter((_, i) => selectedRisks.has(i))) {
+      const opRiskIds: Record<string, string> = {};
+      for (const [i, r] of result.risks.entries()) {
+        if (!selectedRisks.has(i)) continue;
         const impact = Math.min(5, Math.max(1, Math.round(r.impact))) as 1|2|3|4|5;
         const probability = Math.min(5, Math.max(1, Math.round(r.probability))) as 1|2|3|4|5;
-        await createRisk({
+        opRiskIds[`op-${i}`] = await createRisk({
           productId, title: r.title, description: r.description, category: r.category,
           macroprocess: result.affectedProcesses[0] ?? '', process: '',
           impact, probability, inherentRisk: impact * probability,
@@ -121,6 +148,15 @@ export default function DocumentAnalysisPage() {
           roamStatus: 'Owned', owner: ownerName || 'Análisis IA',
           mitigationPlan: r.suggestedControl, control: r.suggestedControl, isRedFlag: r.isRedFlag,
         });
+      }
+      if (sarlaft) {
+        await persistSarlaftAnalysis(productId, {
+          ...sarlaft,
+          risks: sarlaft.risks.map(r => ({
+            ...r,
+            relatedOperationalRiskIds: r.relatedOperationalRiskIds.filter(id => opRiskIds[id]).map(id => opRiskIds[id]),
+          })),
+        }, []);
       }
       setImported(true);
       setTimeout(() => navigate(`/products/${productId}`), 1400);
@@ -130,7 +166,7 @@ export default function DocumentAnalysisPage() {
   };
 
   const reset = () => {
-    setStep('input'); setResult(null); setReqAnswers(null); setLoadedFile(null);
+    setStep('input'); setResult(null); setReqAnswers(null); setSarlaft(null); setLoadedFile(null);
     setPastedText(''); setError(''); setImported(false); setSelectedRisks(new Set());
   };
 
@@ -262,7 +298,7 @@ export default function DocumentAnalysisPage() {
             {step === 'analyzing' ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Analizando con Gemini — puede tardar 10-30 segundos...
+                {analyzingLabel || 'Analizando con Gemini'}… puede tardar hasta un par de minutos
               </>
             ) : (
               <>✦ Analizar con Gemini</>
@@ -348,6 +384,27 @@ export default function DocumentAnalysisPage() {
                     </div>
                   ))}
                 </div>
+              </InfoCard>
+
+              <InfoCard title="Cruce SARLAFT (matriz vigente)">
+                {sarlaft ? (() => {
+                  const applies = sarlaft.summary.cross.filter(c => c.applies !== 'no_aplica');
+                  const newCauses = sarlaft.risks.reduce((s, r) => s + r.causes.filter(c => !c.code).length, 0);
+                  const proposed = sarlaft.risks.reduce((s, r) => s + r.causes.reduce((t, c) => t + c.controls.filter(k => k.status === 'propuesto').length, 0), 0);
+                  return (
+                    <div className="space-y-1 text-xs text-gray-600">
+                      <p>{applies.length} de {sarlaft.summary.cross.length} riesgos de la matriz aplican: {applies.map(c => c.matrixRiskCode.replace('R-SARLAFT-', 'R')).join(', ') || 'ninguno'}.</p>
+                      <p>{sarlaft.risks.filter(r => !r.matrixRiskCode).length} riesgos nuevos · {newCauses} causas nuevas · {proposed} controles propuestos.</p>
+                      <p className="text-gray-400">Se guarda al importar; revísalo en la pestaña SARLAFT del producto.</p>
+                    </div>
+                  );
+                })() : (
+                  <p className="text-xs text-amber-700">
+                    {sarlaftStatus === 'no_matrix'
+                      ? 'No hay matriz SARLAFT vigente cargada: impórtala en Riesgos SARLAFT y cruza el producto desde su pestaña SARLAFT.'
+                      : 'No se pudo hacer el cruce SARLAFT. Podrás ejecutarlo después desde la pestaña SARLAFT del producto.'}
+                  </p>
+                )}
               </InfoCard>
 
               <InfoCard title="Requerimientos del Comité">

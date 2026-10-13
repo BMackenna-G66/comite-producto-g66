@@ -11,8 +11,9 @@ import RiskBadge from '../components/RiskBadge';
 import RiskDetailModal from '../components/RiskDetailModal';
 import RiskOwnershipTable from '../components/RiskOwnershipTable';
 import RequirementsTab from '../components/RequirementsTab';
+import SarlaftTab from '../components/sarlaft/SarlaftTab';
 
-type Tab = 'overview' | 'risks' | 'requirements' | 'ownership' | 'sessions' | 'redflags' | 'links' | 'planning' | 'report';
+type Tab = 'overview' | 'risks' | 'sarlaft' | 'requirements' | 'ownership' | 'sessions' | 'redflags' | 'links' | 'planning' | 'report';
 
 const PLANNING_FIELDS: { key: keyof ProductPlanning; label: string; kind: 'date' | 'url'; placeholder?: string }[] = [
   { key: 'startDate', label: 'Fecha de Inicio', kind: 'date' },
@@ -336,7 +337,7 @@ export default function ProductDetailPage() {
       {/* Tabs */}
       <div className="border-b border-gray-200 no-print overflow-x-auto">
         <div className="flex gap-0">
-          {(['overview', 'risks', 'requirements', 'ownership', 'sessions', 'redflags', 'links', 'planning', 'report'] as Tab[]).map(t => (
+          {(['overview', 'risks', 'sarlaft', 'requirements', 'ownership', 'sessions', 'redflags', 'links', 'planning', 'report'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -346,6 +347,7 @@ export default function ProductDetailPage() {
             >
               {t === 'overview' ? 'Descripción'
                 : t === 'risks' ? `Riesgos (${risks.length})`
+                : t === 'sarlaft' ? 'SARLAFT'
                 : t === 'requirements' ? 'Requerimientos'
                 : t === 'ownership' ? `Responsables Comité`
                 : t === 'sessions' ? `Sesiones (${sessions.length})`
@@ -593,6 +595,10 @@ export default function ProductDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {tab === 'sarlaft' && (
+        <SarlaftTab product={product} operationalRisks={risks} onProductChange={update => setProduct(prev => (prev ? update(prev) : prev))} />
       )}
 
       {tab === 'requirements' && (

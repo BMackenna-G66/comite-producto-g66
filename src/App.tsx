@@ -11,6 +11,7 @@ import CommitteeSessionPage from './pages/CommitteeSessionPage';
 import SessionsPage from './pages/SessionsPage';
 import RisksPage from './pages/RisksPage';
 import ProductRelationsPage from './pages/ProductRelationsPage';
+import SarlaftPage from './pages/SarlaftPage';
 import DocumentAnalysisPage from './pages/DocumentAnalysisPage';
 import AdminPage from './pages/AdminPage';
 // GRC / ERM layers
@@ -59,6 +60,7 @@ export default function App() {
           {/* Risk Management */}
           <Route path="/risks" element={<Protected><RisksPage /></Protected>} />
           <Route path="/product-relations" element={<Protected><ProductRelationsPage /></Protected>} />
+          <Route path="/sarlaft" element={<Protected><SarlaftPage /></Protected>} />
           <Route path="/corporate-risks" element={<Protected><CorporateRisksPage /></Protected>} />
           <Route path="/kris" element={<Protected><KRIsPage /></Protected>} />
           <Route path="/appetite" element={<Protected><RiskAppetitePage /></Protected>} />
