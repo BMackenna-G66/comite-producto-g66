@@ -94,7 +94,8 @@ export default function DocumentAnalysisPage() {
         setAnalyzingLabel(`Cruzando contra la matriz SARLAFT vigente (${matrix.risks.length} riesgos)`);
         try {
           const opRisks = res.risks.map((r, i) => ({ id: `op-${i}`, title: r.title, category: r.category }));
-          const ai = await analyzeSarlaft(input, matrix, { name: res.productName, description: res.productDescription }, opRisks);
+          const ai = await analyzeSarlaft(input, matrix, { name: res.productName, description: res.productDescription }, opRisks,
+            msg => setAnalyzingLabel(`SARLAFT: ${msg}`));
           sarlaftOut = buildSarlaftAnalysis(ai, matrix, '', mode === 'file' && loadedFile ? loadedFile.name : 'Texto pegado', opRisks.map(r => r.id));
           setSarlaftStatus('ok');
         } catch {

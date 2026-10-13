@@ -299,55 +299,120 @@ const SARLAFT_VALUATION = `VALORACIÓN INHERENTE (escala 1-5):
 - Impacto de contagio (15%): 1 usuario o proveedor involucrado; 2 cliente; 3 funcionario; 4 directivo; 5 accionista principal.
 - Impacto reputacional (15%): 1 interno; 2 entidad; 3 sectorial; 4 nacional; 5 internacional.`;
 
-export const analyzeSarlaft = async (
+// El cruce se hace en dos etapas porque pedir el detalle de todos los riesgos en
+// una sola respuesta supera el límite de salida del modelo (JSON truncado):
+// 1) una llamada corta evalúa todos los riesgos de la matriz y detecta riesgos
+//    nuevos; 2) una llamada por cada riesgo que aplica detalla causas y
+//    controles, en paralelo y aislando fallas (un riesgo que falla se carga
+//    después desde la matriz).
+const SARLAFT_CONCURRENCY = 4;
+
+const sarlaftContents = (doc: ScopeDocInput, instructions: string) =>
+  doc.kind === 'pdf'
+    ? { role: 'user', parts: [{ text: instructions }, { inlineData: { mimeType: 'application/pdf', data: doc.base64 } }] as Part[] }
+    : `${instructions}\n\nDOCUMENTO DE ALCANCE:\n\n${doc.text}`;
+
+const matrixRiskText = (matrix: SarlaftMatrix, r: SarlaftMatrix['risks'][number], withCauses: boolean) => {
+  const head = `${r.code} — Delito fuente: ${r.sourceCrime}. ${r.description} (Factores: ${r.riskFactors} · Productos: ${r.products})`;
+  if (!withCauses) return `- ${head}`;
+  const causeCodes = [...new Set(r.rows.map(x => x.causeCode).filter(Boolean))];
+  const causes = causeCodes.map(cc => {
+    const cause = matrix.causes.find(c => c.code === cc);
+    const ctrls = r.rows.filter(x => x.causeCode === cc && x.controlCode).map(x => x.controlCode);
+    return `  - ${cc} [${cause?.factor ?? ''}]: ${cause?.text ?? '(sin detalle)'}\n    Controles vigentes: ${ctrls.join(', ') || 'ninguno'}`;
+  });
+  return `${head}\nValoración vigente: P${r.probability} L${r.impactLegal} F${r.impactFinancial} C${r.impactContagion} R${r.impactReputational}\nCausas vigentes:\n${causes.join('\n')}`;
+};
+
+const analyzeSarlaftCross = async (doc: ScopeDocInput, matrix: SarlaftMatrix, product: { name: string; description: string }) => {
+  const instructions = `Eres especialista SARLAFT del Oficial de Cumplimiento de Global66 en Colombia (Global Colombia 81 S.A., vigilada por la SFC). Analiza el documento de alcance del producto "${product.name}" (${product.description}).
+
+1. Perfil del producto en factores de riesgo LA/FT: clientes/contrapartes, productos, canales y jurisdicciones (máx. 80 palabras).
+2. Cruce contra TODOS los ${matrix.risks.length} riesgos de la matriz vigente (${matrix.version}): para cada uno, "directo", "indirecto" o "no_aplica", con justificación de máx. 35 palabras basada en el documento.
+3. Riesgos LA/FT/FPADM que el producto introduce y que la matriz no contempla (puede ser ninguno): delito fuente, descripción como "ser utilizada para..." y justificación.
+4. Conclusión de máx. 80 palabras.
+
+RIESGOS DE LA MATRIZ VIGENTE:
+${matrix.risks.map(r => matrixRiskText(matrix, r, false)).join('\n')}
+
+Usa solo información del documento; no inventes hechos. Códigos exactos. Español.`;
+  const str = { type: Type.STRING };
+  const response = await getAI().models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: sarlaftContents(doc, instructions),
+    config: {
+      temperature: 0.2,
+      maxOutputTokens: 16384,
+      thinkingConfig: { thinkingBudget: 1024 },
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          productProfile: str,
+          summary: str,
+          cross: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: { matrixRiskCode: str, applies: { type: Type.STRING, enum: ['directo', 'indirecto', 'no_aplica'] }, justification: str },
+              required: ['matrixRiskCode', 'applies', 'justification'],
+            },
+          },
+          newRisks: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: { sourceCrime: str, description: str, justification: str },
+              required: ['sourceCrime', 'description', 'justification'],
+            },
+          },
+        },
+        required: ['productProfile', 'summary', 'cross', 'newRisks'],
+      },
+    },
+  });
+  return JSON.parse(response.text ?? '{}') as {
+    productProfile: string; summary: string;
+    cross: AISarlaftAnalysis['cross'];
+    newRisks: { sourceCrime: string; description: string; justification: string }[];
+  };
+};
+
+const analyzeSarlaftRiskDetail = async (
   doc: ScopeDocInput,
   matrix: SarlaftMatrix,
   product: { name: string; description: string },
   operationalRisks: { id: string; title: string; category: string }[],
-): Promise<AISarlaftAnalysis> => {
-  const ai = getAI();
-  const causesByCode = new Map(matrix.causes.map(c => [c.code, c]));
-  const matrixText = matrix.risks.map(r => {
-    const causeCodes = [...new Set(r.rows.map(x => x.causeCode).filter(Boolean))];
-    const lines = causeCodes.map(cc => {
-      const cause = causesByCode.get(cc);
-      const ctrls = r.rows.filter(x => x.causeCode === cc && x.controlCode).map(x => x.controlCode);
-      return `   - ${cc} [factor: ${cause?.factor ?? ''}]: ${cause?.text ?? '(sin detalle)'}\n     Controles: ${ctrls.join(', ') || 'ninguno'}`;
-    });
-    return `## ${r.code} — Delito fuente: ${r.sourceCrime}\n${r.description}\nFactores: ${r.riskFactors} · Productos: ${r.products} · Valoración vigente: P${r.probability} L${r.impactLegal} F${r.impactFinancial} C${r.impactContagion} R${r.impactReputational}\n Causas:\n${lines.join('\n')}`;
-  }).join('\n\n');
-  const controlsText = matrix.controls.map(c =>
-    `- ${c.code} ${c.name} (${c.tipo}, ${c.naturaleza}): ${c.description}`).join('\n');
-  const opText = operationalRisks.length
-    ? operationalRisks.map(r => `- id ${r.id}: ${r.title} (${r.category})`).join('\n')
-    : '(el producto aún no tiene riesgos operacionales)';
+  target: { matrixRiskCode: string; sourceCrime: string; description: string; justification: string },
+): Promise<AISarlaftRisk> => {
+  const base = matrix.risks.find(r => r.code === target.matrixRiskCode);
+  const targetText = base
+    ? `RIESGO A DETALLAR (de la matriz vigente):\n${matrixRiskText(matrix, base, true)}`
+    : `RIESGO A DETALLAR (nuevo, no está en la matriz): Delito fuente: ${target.sourceCrime}. ${target.description}`;
+  const instructions = `Eres especialista SARLAFT del Oficial de Cumplimiento de Global66 en Colombia (vigilada por la SFC). Producto: "${product.name}" (${product.description}). Este riesgo aplica al producto porque: ${target.justification}
 
-  const instructions = `Eres especialista SARLAFT del Oficial de Cumplimiento de Global66 en Colombia (Global Colombia 81 S.A., vigilada por la SFC). Analiza el documento de alcance del producto "${product.name}" (${product.description}).
+${targetText}
 
-TAREA 1 — CRUCE CONTRA LA MATRIZ VIGENTE (${matrix.version}): evalúa TODOS los riesgos de la matriz (${matrix.risks.length}) y para cada uno indica si el producto lo expone de forma "directo", "indirecto" o "no_aplica", con justificación basada en el documento (factores: clientes/contrapartes, productos, canales, jurisdicciones).
-TAREA 2 — DETALLE DE LOS RIESGOS QUE APLICAN: para cada riesgo directo o indirecto, entrega su valoración inherente para ESTE producto (parte de la valoración vigente y ajústala si el producto cambia la exposición), las causas de la matriz que aplican (con su código exacto) y las CAUSAS NUEVAS que el producto introduce y la matriz no cubre (code vacío). Para cada causa, los controles de la matriz que la cubren (código exacto) y, si no hay control suficiente, CONTROLES PROPUESTOS (code vacío). Si el producto introduce un riesgo que no existe en la matriz, agrégalo con matrixRiskCode vacío.
-TAREA 3 — CALIFICACIÓN SEGÚN LA METODOLOGÍA SFC: califica de 1 a 3 cada riesgo, causa y control (existente o nuevo). Para cada causa extrae sujeto, acción, objeto y contexto tal como están escritos (vacío si falta). Para cada control, sus 4 componentes. Las causas y controles nuevos que propongas deben redactarse cumpliendo la metodología.
-TAREA 4 — Relaciona cada riesgo SARLAFT con los riesgos operacionales del producto que traten el mismo fenómeno (por su id), si los hay.
+TAREA:
+- Valoración inherente del riesgo para ESTE producto (parte de la vigente si existe y ajústala si el producto cambia la exposición).
+- Causas de la matriz que aplican al producto (código exacto) y CAUSAS NUEVAS que el producto introduce y la matriz no cubre (code vacío, máx. 3, redactadas con sujeto + acción + objeto determinado + contexto).
+- Para cada causa: controles vigentes que la cubren (código exacto del catálogo) y, si no hay control suficiente, un CONTROL PROPUESTO (code vacío) redactado con sus 4 componentes.
+- Califica de 1 a 3 el riesgo, cada causa y cada control según la metodología SFC. El control no puede superar a su causa.
+- Relaciona el riesgo con los riesgos operacionales del producto que traten el mismo fenómeno (por id).
+
+BREVEDAD (obligatorio): para causas y controles EXISTENTES deja text, name y description vacíos (se toman de la matriz). Sujeto, acción, objeto, contexto y los 4 componentes: frases de máx. 15 palabras tomadas del texto evaluado; vacío si el elemento no está explícito. sfcObservation: máx. 25 palabras.
 
 ${SARLAFT_METHODOLOGY}
 
 ${SARLAFT_VALUATION}
 
-MATRIZ VIGENTE — RIESGOS, CAUSAS Y CONTROLES:
-${matrixText}
+CATÁLOGO DE CONTROLES VIGENTES:
+${matrix.controls.map(c => `- ${c.code} ${c.name} (${c.tipo}, ${c.naturaleza}): ${c.description.slice(0, 220)}`).join('\n')}
 
-CATÁLOGO DE CONTROLES:
-${controlsText}
+RIESGOS OPERACIONALES DEL PRODUCTO:
+${operationalRisks.map(r => `- id ${r.id}: ${r.title} (${r.category})`).join('\n') || '(ninguno)'}
 
-RIESGOS OPERACIONALES ACTUALES DEL PRODUCTO:
-${opText}
-
-Reglas: usa solo información del documento y de la matriz; no inventes hechos. Códigos exactamente como aparecen. Responde en español.`;
-
-  const contents = doc.kind === 'pdf'
-    ? { role: 'user', parts: [{ text: instructions }, { inlineData: { mimeType: 'application/pdf', data: doc.base64 } }] as Part[] }
-    : `${instructions}\n\nDOCUMENTO DE ALCANCE:\n\n${doc.text}`;
-
+Usa solo información del documento y de la matriz; no inventes hechos. Español.`;
   const str = { type: Type.STRING };
   const int = { type: Type.INTEGER };
   const control = {
@@ -368,53 +433,62 @@ Reglas: usa solo información del documento y de la matriz; no inventes hechos. 
     },
     required: ['code', 'text', 'factor', 'sujeto', 'accion', 'objeto', 'contexto', 'sfcScore', 'sfcObservation', 'controls'],
   };
-  const response = await ai.models.generateContent({
+  const response = await getAI().models.generateContent({
     model: 'gemini-2.5-flash',
-    contents,
+    contents: sarlaftContents(doc, instructions),
     config: {
       temperature: 0.2,
+      maxOutputTokens: 16384,
+      thinkingConfig: { thinkingBudget: 1024 },
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          productProfile: str,
-          summary: str,
-          cross: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                matrixRiskCode: str,
-                applies: { type: Type.STRING, enum: ['directo', 'indirecto', 'no_aplica'] },
-                justification: str,
-              },
-              required: ['matrixRiskCode', 'applies', 'justification'],
-            },
-          },
-          risks: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                matrixRiskCode: str, sourceCrime: str, description: str,
-                applicability: { type: Type.STRING, enum: ['directo', 'indirecto'] },
-                justification: str,
-                probability: int, impactLegal: int, impactFinancial: int, impactContagion: int, impactReputational: int,
-                sfcRiskScore: int,
-                relatedOperationalRiskIds: { type: Type.ARRAY, items: str },
-                causes: { type: Type.ARRAY, items: cause },
-              },
-              required: ['matrixRiskCode', 'sourceCrime', 'description', 'applicability', 'justification', 'probability',
-                'impactLegal', 'impactFinancial', 'impactContagion', 'impactReputational', 'sfcRiskScore',
-                'relatedOperationalRiskIds', 'causes'],
-            },
-          },
+          applicability: { type: Type.STRING, enum: ['directo', 'indirecto'] },
+          probability: int, impactLegal: int, impactFinancial: int, impactContagion: int, impactReputational: int,
+          sfcRiskScore: int,
+          relatedOperationalRiskIds: { type: Type.ARRAY, items: str },
+          causes: { type: Type.ARRAY, items: cause },
         },
-        required: ['productProfile', 'summary', 'cross', 'risks'],
+        required: ['applicability', 'probability', 'impactLegal', 'impactFinancial', 'impactContagion', 'impactReputational',
+          'sfcRiskScore', 'relatedOperationalRiskIds', 'causes'],
       },
     },
   });
-  return JSON.parse(response.text ?? '{}') as AISarlaftAnalysis;
+  const detail = JSON.parse(response.text ?? '{}') as Omit<AISarlaftRisk, 'matrixRiskCode' | 'sourceCrime' | 'description' | 'justification'>;
+  return { ...detail, matrixRiskCode: target.matrixRiskCode, sourceCrime: target.sourceCrime, description: target.description, justification: target.justification };
+};
+
+export const analyzeSarlaft = async (
+  doc: ScopeDocInput,
+  matrix: SarlaftMatrix,
+  product: { name: string; description: string },
+  operationalRisks: { id: string; title: string; category: string }[],
+  onProgress?: (message: string) => void,
+): Promise<AISarlaftAnalysis> => {
+  onProgress?.(`Cruzando contra los ${matrix.risks.length} riesgos de la matriz`);
+  const cross = await analyzeSarlaftCross(doc, matrix, product);
+  const codes = new Set(matrix.risks.map(r => r.code));
+  const targets = [
+    ...(cross.cross ?? [])
+      .filter(c => c.applies !== 'no_aplica' && codes.has(c.matrixRiskCode))
+      .map(c => {
+        const m = matrix.risks.find(r => r.code === c.matrixRiskCode)!;
+        return { matrixRiskCode: m.code, sourceCrime: m.sourceCrime, description: m.description, justification: c.justification };
+      }),
+    ...(cross.newRisks ?? []).map(n => ({ matrixRiskCode: '', sourceCrime: n.sourceCrime, description: n.description, justification: n.justification })),
+  ];
+
+  const risks: AISarlaftRisk[] = [];
+  let done = 0;
+  for (let i = 0; i < targets.length; i += SARLAFT_CONCURRENCY) {
+    const batch = targets.slice(i, i + SARLAFT_CONCURRENCY);
+    onProgress?.(`Detallando causas y controles (${done} de ${targets.length} riesgos)`);
+    const results = await Promise.allSettled(batch.map(t => analyzeSarlaftRiskDetail(doc, matrix, product, operationalRisks, t)));
+    for (const r of results) if (r.status === 'fulfilled') risks.push(r.value);
+    done += batch.length;
+  }
+  return { productProfile: cross.productProfile, summary: cross.summary, cross: cross.cross ?? [], risks };
 };
 
 export const suggestMitigations = async (title: string, description: string, category: string): Promise<string> => {
