@@ -198,6 +198,12 @@ export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
                   <select value={form.category} onChange={e => set('category', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand">
                     <option value="">Sin categoría</option>
+                    {/* Las categorías que vienen de la IA pueden ser texto libre o
+                        combinadas ("Ciberseguridad, Operacional"); se muestran tal
+                        cual para no perderlas al guardar ni al editar otro campo. */}
+                    {risk.category && !RISK_CATEGORIES.includes(risk.category) && (
+                      <option value={risk.category}>{risk.category}</option>
+                    )}
                     {RISK_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
@@ -206,6 +212,9 @@ export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
                   <select value={form.owner} onChange={e => set('owner', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand">
                     <option value="">Sin asignar</option>
+                    {risk.owner && risk.owner !== 'Análisis IA' && !COMMITTEE_ROLES.some(r => r.roleLabel === risk.owner) && (
+                      <option value={risk.owner}>{risk.owner}</option>
+                    )}
                     {COMMITTEE_ROLES.map(r => <option key={r.roleLabel} value={r.roleLabel}>{r.shortLabel}</option>)}
                     <option value="Análisis IA">Análisis IA (pendiente asignar)</option>
                   </select>
