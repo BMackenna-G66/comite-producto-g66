@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Risk, RoamState, RISK_CATEGORIES, COMMITTEE_ROLES, riskLevelFromScore, RISK_LEVEL_LABELS } from '../types';
+import { deleteField } from 'firebase/firestore';
 import { updateRisk } from '../services/firestore';
 import { suggestMitigations } from '../services/geminiService';
 import { useAuth } from '../hooks/useAuth';
@@ -56,6 +57,7 @@ export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
   const [aiLoading, setAiLoading] = useState(false);
   const [tab, setTab] = useState<'detail' | 'control' | 'history'>('detail');
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const score = form.impact * form.probability;
   const level = riskLevelFromScore(score);
@@ -67,8 +69,8 @@ export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
       setForm(f => ({
         ...f,
         riskAccepted: true,
-        riskAcceptedBy: user?.uid,
-        riskAcceptedByName: user?.name,
+        riskAcceptedBy: user?.uid ?? '',
+        riskAcceptedByName: user?.name ?? 'Usuario',
         riskAcceptedAt: new Date().toISOString(),
       }));
     } else {
@@ -84,17 +86,31 @@ export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
 
   const handleSave = async () => {
     setSaving(true);
-    await updateRisk(risk.id, {
-      ...form,
-      impact: form.impact as Risk['impact'],
-      probability: form.probability as Risk['probability'],
-      inherentRisk: score,
-      riskLevel: level,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    setSaving(false);
-    onSaved();
+    setSaveError('');
+    try {
+      // Firestore rechaza campos undefined: si el riesgo no está asumido, los
+      // datos de aceptación se borran explícitamente en vez de enviarse vacíos.
+      const { riskAcceptedBy, riskAcceptedByName, riskAcceptedAt, ...rest } = form;
+      const acceptance = form.riskAccepted
+        ? { riskAcceptedBy: riskAcceptedBy ?? '', riskAcceptedByName: riskAcceptedByName ?? '', riskAcceptedAt: riskAcceptedAt ?? new Date().toISOString() }
+        : { riskAcceptedBy: deleteField(), riskAcceptedByName: deleteField(), riskAcceptedAt: deleteField() };
+      const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+      await updateRisk(risk.id, {
+        ...defined,
+        ...acceptance,
+        impact: form.impact as Risk['impact'],
+        probability: form.probability as Risk['probability'],
+        inherentRisk: score,
+        riskLevel: level,
+      } as unknown as Partial<Risk>);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      onSaved();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'No se pudo guardar');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAddComment = async () => {
@@ -368,6 +384,7 @@ export default function RiskDetailModal({ risk, onClose, onSaved }: Props) {
           <div className="text-xs text-gray-400">
             Creado: {new Date(risk.createdAt).toLocaleDateString('es-CL')} ·
             Actualizado: {new Date(risk.updatedAt).toLocaleDateString('es-CL')}
+            {saveError && <p className="text-red-600 mt-1">No se pudo guardar: {saveError}</p>}
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50">
