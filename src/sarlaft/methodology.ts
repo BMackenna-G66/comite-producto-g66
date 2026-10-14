@@ -167,12 +167,15 @@ export const SFC_EXPECTED_COHERENCE = 0.8;
 export const SFC_MIN_COHERENCE = 1 / 3;
 
 // Cada registro riesgo → causa → control suma de 3 a 9. El control no puede
-// calificar por encima de su causa. Una causa sin control cuenta como un
-// registro con control débil (1).
+// calificar por encima de su causa. La SFC evalúa la matriz tal como está, así
+// que solo cuentan las causas de la matriz y sus controles existentes: lo que
+// la IA propone (y califica ella misma) inflaría el indicador. Una causa sin
+// control existente cuenta como un registro con control débil (1).
 export const coherenceRecords = (risks: SarlaftProductRisk[]) =>
   risks.flatMap(r =>
-    r.causes.flatMap(c => {
-      const controlScores = c.controls.length > 0 ? c.controls.map(ctl => ctl.sfcScore) : [1];
+    r.causes.filter(c => c.code).flatMap(c => {
+      const existing = c.controls.filter(ctl => ctl.status === 'existente');
+      const controlScores = existing.length > 0 ? existing.map(ctl => ctl.sfcScore) : [1];
       return controlScores.map(cs => r.sfcRiskScore + c.sfcScore + Math.min(cs, c.sfcScore));
     }),
   );

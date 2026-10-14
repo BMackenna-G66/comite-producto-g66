@@ -195,7 +195,7 @@ export default function SarlaftTab({ product, operationalRisks, onProductChange 
         ].map(([title, value, color]) => (
           <div key={title} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
             <p className={`text-xl font-bold ${color || 'text-gray-800'}`}>{value}</p>
-            <p className="text-[11px] text-gray-500">{title}{title === 'Coherencia SFC' && ' (esperado ≥ 80%)'}</p>
+            <p className="text-[11px] text-gray-500">{title}{title === 'Coherencia SFC' && ' de lo vigente (esperado ≥ 80%)'}</p>
           </div>
         ))}
       </div>
