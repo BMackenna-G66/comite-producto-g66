@@ -182,6 +182,25 @@ export const ANSWER_OPTIONS: Record<Exclude<RequirementAnswerType, 'texto'>, str
 
 export const areaQuestions = (area: RequirementArea) => area.sections.flatMap(s => s.questions);
 
+// Variante conservadora para el reanálisis masivo: solo completa preguntas que no
+// tienen respuesta. Nunca reemplaza una respuesta existente (de la IA o manual)
+// ni escribe un vacío sobre una pregunta ya registrada.
+export const fillMissingAIAnswers = (
+  aiAnswers: { id: string; answer: string; detail: string }[],
+  existing: Record<string, RequirementAnswer> = {},
+): Record<string, RequirementAnswer> => {
+  const updatedAt = new Date().toISOString();
+  return Object.fromEntries(
+    aiAnswers
+      .filter(a => {
+        const prev = existing[a.id];
+        if (!prev) return true;
+        return !prev.answer.trim() && !!a.answer.trim() && prev.origin !== 'manual';
+      })
+      .map(a => [a.id, { answer: a.answer, detail: a.detail, origin: 'ia' as const, updatedAt, updatedByName: 'Análisis IA' }]),
+  );
+};
+
 // Convierte las respuestas de la IA al formato guardado, omitiendo las que un
 // miembro ya editó a mano: un reanálisis nunca pisa trabajo humano.
 export const mergeAIAnswers = (
