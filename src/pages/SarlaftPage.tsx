@@ -10,6 +10,7 @@ import { Product } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
 import SarlaftHeatMap from '../components/sarlaft/SarlaftHeatMap';
+import BulkReanalysis from '../components/sarlaft/BulkReanalysis';
 
 const valueMatrixRisk = (m: Pick<SarlaftMatrix, 'controls'>, r: MatrixRisk) => {
   const byCode = new Map(m.controls.map(c => [c.code, c]));
@@ -68,7 +69,7 @@ function MatrixRiskTable({ matrix }: { matrix: Pick<SarlaftMatrix, 'risks' | 'co
 export default function SarlaftPage() {
   const { user } = useAuth();
   const canImport = user?.role === 'admin' || user?.role === 'member';
-  const [tab, setTab] = useState<'matrix' | 'products'>('matrix');
+  const [tab, setTab] = useState<'matrix' | 'products' | 'bulk'>('matrix');
   const [matrix, setMatrix] = useState<SarlaftMatrix | null>(null);
   const [risks, setRisks] = useState<SarlaftProductRisk[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -79,11 +80,11 @@ export default function SarlaftPage() {
   const [showCatalog, setShowCatalog] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const reload = () =>
     Promise.all([getSarlaftMatrix(), getAllSarlaftRisks(), getProducts()])
-      .then(([m, r, p]) => { setMatrix(m); setRisks(r); setProducts(p); })
-      .finally(() => setLoading(false));
-  }, []);
+      .then(([m, r, p]) => { setMatrix(m); setRisks(r); setProducts(p); });
+
+  useEffect(() => { reload().finally(() => setLoading(false)); }, []);
 
   const handleFile = async (f: File) => {
     setImportError('');
@@ -129,11 +130,15 @@ export default function SarlaftPage() {
       </div>
 
       <div className="flex gap-2">
-        {([['matrix', 'Matriz vigente'], ['products', `Por producto (${risks.length})`]] as const).map(([k, l]) => (
+        {([['matrix', 'Matriz vigente'], ['products', `Por producto (${risks.length})`], ...(canImport ? [['bulk', 'Reanálisis masivo']] as const : [])] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${tab === k ? 'bg-brand text-white border-brand' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>{l}</button>
         ))}
       </div>
+
+      {tab === 'bulk' && canImport && (
+        <BulkReanalysis products={products} sarlaftRisks={risks} matrix={matrix} onDone={reload} />
+      )}
 
       {tab === 'matrix' && (
         <>
