@@ -88,10 +88,13 @@ export default function BulkReanalysis({ products, sarlaftRisks, matrix, onDone 
     return () => window.removeEventListener('beforeunload', warn);
   }, [running]);
 
-  const addFiles = (files: FileList) => {
+  const addFiles = (fileList: FileList) => {
+    // Se copia antes de limpiar el input: el FileList queda vacío al resetear
+    // su valor, y el updater de setRows corre después.
+    const files = Array.from(fileList);
     setRows(prev => {
       const next = [...prev];
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         if (next.some(r => r.file.name === file.name)) continue;
         const { productId, reason } = matchProduct(file, products);
         // Un producto se procesa una sola vez: si ya está asignado a otro
