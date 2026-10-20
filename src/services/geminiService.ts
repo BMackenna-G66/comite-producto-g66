@@ -342,7 +342,7 @@ Usa solo información del documento; no inventes hechos. Códigos exactos. Espa�
     contents: sarlaftContents(doc, instructions),
     config: {
       temperature: 0.2,
-      maxOutputTokens: 16384,
+      maxOutputTokens: 32768,
       thinkingConfig: { thinkingBudget: 1024 },
       responseMimeType: 'application/json',
       responseSchema: {
@@ -467,7 +467,13 @@ export const analyzeSarlaft = async (
   onProgress?: (message: string) => void,
 ): Promise<AISarlaftAnalysis> => {
   onProgress?.(`Cruzando contra los ${matrix.risks.length} riesgos de la matriz`);
-  const cross = await analyzeSarlaftCross(doc, matrix, product);
+  // Una respuesta cortada (JSON incompleto) es esporádica: se reintenta una vez.
+  const cross = await analyzeSarlaftCross(doc, matrix, product)
+    .catch(e => {
+      if (!(e instanceof SyntaxError)) throw e;
+      onProgress?.('Respuesta incompleta de la IA, reintentando el cruce');
+      return analyzeSarlaftCross(doc, matrix, product);
+    });
   const codes = new Set(matrix.risks.map(r => r.code));
   const targets = [
     ...(cross.cross ?? [])
